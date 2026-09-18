@@ -79,6 +79,14 @@ public partial class MainWindow : Window
 
     private void Reset_Click(object sender, RoutedEventArgs e) => _viewModel.ResetCurrentPreset();
 
+    private const double CeilingStepDb = 0.1;
+
+    private void CeilingDown_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.LimiterCeilingDb = Math.Round(_viewModel.LimiterCeilingDb - CeilingStepDb, 1);
+
+    private void CeilingUp_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.LimiterCeilingDb = Math.Round(_viewModel.LimiterCeilingDb + CeilingStepDb, 1);
+
     private void Window_StateChanged(object? sender, EventArgs e)
     {
         if (WindowState == WindowState.Minimized) Hide();
