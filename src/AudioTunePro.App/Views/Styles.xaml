@@ -7,7 +7,10 @@
     <SolidColorBrush x:Key="PanelBorderBrush" Color="#383B4B" />
     <SolidColorBrush x:Key="AccentBrush" Color="#4DD8CD" />
     <SolidColorBrush x:Key="AccentDimBrush" Color="#2A8B84" />
-    <SolidColorBrush x:Key="TextBrush" Color="#FFFFFF" />
+    <!-- ~87% white, not pure #FFFFFF: standard dark-theme guidance (e.g. Material's
+         high-emphasis text on dark surfaces) — pure white on a near-black background
+         reads as glaring/uncomfortable for sustained reading. -->
+    <SolidColorBrush x:Key="TextBrush" Color="#E4E6EC" />
     <SolidColorBrush x:Key="MutedTextBrush" Color="#ACB0C0" />
     <SolidColorBrush x:Key="TrackBrush" Color="#353849" />
     <SolidColorBrush x:Key="WarnBrush" Color="#F0B85C" />

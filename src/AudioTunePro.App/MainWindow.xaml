@@ -118,20 +118,19 @@
                 <Grid Margin="0,0,0,4" IsEnabled="{Binding AutoGainProtection}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="60" />
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="52" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Ceiling" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Content="−" Style="{StaticResource StepButton}" Margin="0,0,6,0"
-                            Click="CeilingDown_Click" />
-                    <Slider Grid.Column="2" Style="{StaticResource HSlider}" Minimum="-6" Maximum="0"
-                            Value="{Binding LimiterCeilingDb}" />
-                    <Button Grid.Column="3" Content="+" Style="{StaticResource StepButton}" Margin="6,0,0,0"
-                            Click="CeilingUp_Click" />
-                    <TextBlock Grid.Column="4" Text="{Binding LimiterCeilingDb, StringFormat={}{0:0.0} dB}"
-                               Style="{StaticResource MutedText}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left">
+                        <Button Content="−dB" Style="{StaticResource StepButton}" Width="40"
+                                Click="CeilingDown_Click" />
+                        <Border Width="64" Height="26" Margin="6,0" Background="{StaticResource TrackBrush}" CornerRadius="4">
+                            <TextBlock Text="{Binding LimiterCeilingDb, StringFormat={}{0:0.0} dB}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </Border>
+                        <Button Content="+dB" Style="{StaticResource StepButton}" Width="40"
+                                Click="CeilingUp_Click" />
+                    </StackPanel>
                 </Grid>
                 <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,4,0,20">
                     <Run Text="Estimated peak: " />
