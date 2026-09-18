@@ -8,6 +8,12 @@
     <PackageReference Include="NAudio" Version="3.1.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Also embed as a WPF pack resource so MainWindow's title-bar icon (Window.Icon)
+         can reference it, independent of the native EXE icon set via ApplicationIcon below. -->
+    <Resource Include="Assets\icon.ico" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -22,6 +28,7 @@
     <Product>AudioTune Pro</Product>
     <AssemblyTitle>AudioTune Pro — System-Wide Equalizer</AssemblyTitle>
     <Company>AudioTune Pro</Company>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>

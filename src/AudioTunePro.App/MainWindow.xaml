@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:AudioTunePro.App.ViewModels"
         Title="AudioTune Pro — System-Wide Equalizer"
+        Icon="pack://application:,,,/Assets/icon.ico"
         Height="700" Width="1020" MinHeight="620" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Closing="Window_Closing"

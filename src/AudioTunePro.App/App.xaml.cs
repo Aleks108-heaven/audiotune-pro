@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Forms;
 using AudioTunePro.App.Assets;
@@ -21,7 +22,7 @@ public partial class App : Application
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        var icon = IconFactory.CreateAppIcon();
+        var icon = LoadAppIcon();
 
         _trayIcon = new NotifyIcon
         {
@@ -65,5 +66,29 @@ public partial class App : Application
         _mainWindow?.ForceClose();
         _trayIcon?.Dispose();
         Shutdown();
+    }
+
+    /// <summary>
+    /// Uses the icon baked into this EXE (set via ApplicationIcon in the .csproj) so the
+    /// tray icon always matches the taskbar/desktop/Start-Menu icon. Falls back to the
+    /// runtime-drawn icon if extraction ever fails (e.g. a stripped/unusual build).
+    /// </summary>
+    private static System.Drawing.Icon LoadAppIcon()
+    {
+        try
+        {
+            var exePath = Environment.ProcessPath;
+            if (exePath is not null)
+            {
+                var extracted = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
+                if (extracted is not null) return extracted;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException)
+        {
+            // Fall through to the generated fallback below.
+        }
+
+        return IconFactory.CreateAppIcon();
     }
 }

@@ -66,6 +66,31 @@ present if you can build this repo). Add `--self-contained true` if you need
 to hand the folder to a machine without .NET installed (produces a much
 larger output).
 
+### Installer
+
+`CI-artefact/AudioTunePro-Setup.msi` is a real installer, built with the
+[WiX Toolset](https://wixtoolset.org/) v5 (free — v6+ requires accepting a
+paid maintenance-fee EULA, so this project intentionally pins v5). Running it
+installs AudioTune Pro to `%LocalAppData%\Programs\AudioTune Pro` (per-user,
+**no admin/UAC prompt**) and adds:
+
+- a **Desktop shortcut**
+- a **Start Menu** entry (with its own "Uninstall AudioTune Pro" shortcut)
+- an entry in Windows Settings → Apps, for the standard uninstall flow
+
+both shortcuts and the app itself use the equalizer-bars icon in
+`src/AudioTunePro.App/Assets/icon.ico`.
+
+To rebuild it after code changes (regenerate `CI-artefact/` first, see
+above, then):
+
+```powershell
+dotnet tool install --global wix --version 5.0.2   # one-time; skip if already installed
+wix extension add -g WixToolset.UI.wixext/5.0.2    # one-time
+cd installer
+wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact/AudioTunePro-Setup.msi
+```
+
 ## Features
 
 - **10-band graphic EQ** (31 Hz – 16 kHz) rendered as a single Equalizer APO
@@ -102,6 +127,10 @@ src/
   AudioTunePro.Core.Tests/  xUnit tests for the Core logic.
   AudioTunePro.App/         WPF UI, Equalizer APO detection/install glue,
                              tray icon, WASAPI level meter, settings storage.
+                             Assets/icon.ico is the app/shortcut icon.
+installer/
+  AudioTunePro.wxs          WiX v5 source for the MSI installer (see above).
+  License.rtf               Shown on the installer's license page.
 ```
 
 User settings and custom presets are stored as JSON under
