@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AudioTunePro.App/AudioTunePro.App.csproj" />
+    <Project Path="src/AudioTunePro.Core.Tests/AudioTunePro.Core.Tests.csproj" />
+    <Project Path="src/AudioTunePro.Core/AudioTunePro.Core.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AudioTunePro.Core\AudioTunePro.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="3.1.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>AudioTunePro</AssemblyName>
+    <RootNamespace>AudioTunePro.App</RootNamespace>
+    <Product>AudioTune Pro</Product>
+    <AssemblyTitle>AudioTune Pro — System-Wide Equalizer</AssemblyTitle>
+    <Company>AudioTune Pro</Company>
+  </PropertyGroup>
+
+</Project>
