@@ -51,6 +51,21 @@ Running the tests:
 dotnet test src/AudioTunePro.Core.Tests/AudioTunePro.Core.Tests.csproj
 ```
 
+### Publishing a runnable build
+
+`CI-artefact/` holds a framework-dependent Release build you can run directly
+(`CI-artefact\AudioTunePro.exe`) without a `dotnet run`/IDE step — handy for
+manual testing. It's git-ignored (regenerate it rather than committing it):
+
+```powershell
+dotnet publish src/AudioTunePro.App/AudioTunePro.App.csproj -c Release -r win-x64 --self-contained false -o CI-artefact
+```
+
+It requires the .NET 10 Desktop Runtime on the machine that runs it (already
+present if you can build this repo). Add `--self-contained true` if you need
+to hand the folder to a machine without .NET installed (produces a much
+larger output).
+
 ## Features
 
 - **10-band graphic EQ** (31 Hz – 16 kHz) rendered as a single Equalizer APO
