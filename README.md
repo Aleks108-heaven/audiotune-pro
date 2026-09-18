@@ -118,6 +118,31 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
   running in the background; use the tray menu to reopen or exit.
 - **Start with Windows** toggle.
 
+## Performance
+
+AudioTune Pro itself does no audio DSP — Equalizer APO does that inside
+Windows' own audio engine process (`audiodg.exe`), entirely separate from
+this app. What's measured below is only AudioTune Pro's own UI process.
+
+Measured on the built `CI-artefact\AudioTunePro.exe` (Release,
+framework-dependent), idle with the level meter running (its default state):
+
+| Metric | Result |
+|---|---|
+| CPU (sustained idle) | ~0.2s of CPU time per 15s wall-clock → ~1.3% of one core |
+| Working set | ~197 MB, flat over a 35s window (no growth) |
+| Private bytes | ~120 MB |
+| Background threads | 12 |
+
+The CPU figure was measured as `Get-Process` CPU-time delta over a fixed
+wall-clock window (`(cpuAfter - cpuBefore) / windowSeconds`); the memory
+figures are `WorkingSet64`/`PrivateMemorySize64` sampled at rest. The
+~120–200 MB footprint is typical baseline for a WPF + WinForms(tray) .NET
+desktop app — mostly the .NET Desktop Runtime/WPF/WinForms framework being
+loaded, not something that grows with usage. Turning off **"Show level
+meter"** stops the one background thread doing recurring work (WASAPI
+loopback capture) if you want the smallest possible footprint.
+
 ## Project layout
 
 ```
