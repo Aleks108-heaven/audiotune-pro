@@ -79,7 +79,7 @@ public partial class MainWindow : Window
 
     private void Reset_Click(object sender, RoutedEventArgs e) => _viewModel.ResetCurrentPreset();
 
-    private const double CeilingStepDb = 0.1;
+    private const double CeilingStepDb = 0.5;
 
     private void CeilingDown_Click(object sender, RoutedEventArgs e) =>
         _viewModel.LimiterCeilingDb = Math.Round(_viewModel.LimiterCeilingDb - CeilingStepDb, 1);
