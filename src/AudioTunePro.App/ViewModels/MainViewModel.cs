@@ -58,15 +58,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     // --- Equalizer APO install status ---
 
     public bool IsApoInstalled => _apo.IsInstalled;
-    public string ApoStatusText => IsApoInstalled
-        ? $"Equalizer APO detected — engine active."
-        : "Equalizer APO not found. Install it once, then AudioTune Pro will control it automatically.";
 
-    public void RefreshInstallStatus()
-    {
-        OnPropertyChanged(nameof(IsApoInstalled));
-        OnPropertyChanged(nameof(ApoStatusText));
-    }
+    public void RefreshInstallStatus() => OnPropertyChanged(nameof(IsApoInstalled));
 
     // --- Preset selection ---
 
@@ -94,6 +87,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(AutoGainProtection));
         OnPropertyChanged(nameof(LimiterCeilingDb));
         OnPropertyChanged(nameof(EstimatedPeakDb));
+        OnPropertyChanged(nameof(PeakState));
 
         _settings.ActivePresetName = preset.Name;
         _store.SaveSettings(_settings);
@@ -105,7 +99,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         Bands.Clear();
         foreach (var band in _engine.Bands)
-            Bands.Add(new BandViewModel(band, OnEqChanged));
+            Bands.Add(new BandViewModel(band, OnEqChanged, () => LimiterCeilingDb));
     }
 
     // --- Live-editable EQ state ---
@@ -154,10 +148,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             _engine.Limiter.CeilingDb = Math.Clamp(value, -6, 0);
             OnPropertyChanged();
             OnEqChanged();
+            foreach (var band in Bands) band.RefreshState();
         }
     }
 
     public double EstimatedPeakDb => AutoGainLimiter.EstimatePeakBoostDb(_engine);
+
+    /// <summary>
+    /// Drives the Limiter section's PeakIndicator badge, using the same gain math as the faders.
+    /// When auto-gain protection is off, no trim is ever applied, so the configured ceiling is
+    /// inert — the only real threshold left is 0 dBFS (true digital clipping), not the ceiling.
+    /// </summary>
+    public SignalState PeakState =>
+        SignalStateCalculator.FromHeadroom((AutoGainProtection ? LimiterCeilingDb : 0.0) - EstimatedPeakDb);
 
     public float LevelMeter
     {
@@ -176,6 +179,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnEqChanged()
     {
         OnPropertyChanged(nameof(EstimatedPeakDb));
+        OnPropertyChanged(nameof(PeakState));
         _applyDebounce.Stop();
         _applyDebounce.Start();
     }

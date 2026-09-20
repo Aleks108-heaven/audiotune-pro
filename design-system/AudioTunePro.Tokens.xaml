@@ -1,0 +1,151 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- AudioTune Pro design tokens, generated from design-system/tokens.json.
+         Brand book: design-system/README.md. Per-control notes: design-system/components.md.
+         Keys mirror tokens.json's `name` fields so the two stay traceable to each other. -->
+
+    <!-- Color -->
+    <Color x:Key="color-app-bg-top">#0B0D12</Color>
+    <Color x:Key="color-app-bg-bottom">#12151C</Color>
+    <SolidColorBrush x:Key="app-bg-top" Color="{StaticResource color-app-bg-top}" />
+    <SolidColorBrush x:Key="app-bg-bottom" Color="{StaticResource color-app-bg-bottom}" />
+    <LinearGradientBrush x:Key="app-bg-gradient" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="{StaticResource color-app-bg-top}" Offset="0" />
+        <GradientStop Color="{StaticResource color-app-bg-bottom}" Offset="1" />
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="surface-panel" Color="#161A22" />
+    <SolidColorBrush x:Key="surface-raised" Color="#1D212B" />
+    <SolidColorBrush x:Key="border-panel" Color="#252A35" />
+    <SolidColorBrush x:Key="divider" Color="#202531" />
+    <SolidColorBrush x:Key="text-primary" Color="#F5F6F7" />
+    <SolidColorBrush x:Key="text-secondary" Color="#8A93A3" />
+    <SolidColorBrush x:Key="text-disabled" Color="#4A5160" />
+    <SolidColorBrush x:Key="ink-on-accent" Color="#0B1116" />
+    <SolidColorBrush x:Key="accent-teal" Color="#4ECCC0" />
+    <SolidColorBrush x:Key="accent-muted" Color="#4A5568" />
+    <SolidColorBrush x:Key="signal-safe" Color="#4ECCC0" />
+    <SolidColorBrush x:Key="signal-warn" Color="#F5A623" />
+    <SolidColorBrush x:Key="signal-danger" Color="#E5484D" />
+    <SolidColorBrush x:Key="warn-bg" Color="#241D12" />
+    <SolidColorBrush x:Key="warn-border" Color="#3A2E15" />
+    <SolidColorBrush x:Key="track-fill" Color="#1D212B" />
+    <SolidColorBrush x:Key="toggle-track-off" Color="#2A2F3B" />
+    <SolidColorBrush x:Key="toggle-track-on" Color="#4ECCC0" />
+    <SolidColorBrush x:Key="focus-ring" Color="#4ECCC0" />
+
+    <!-- LevelMeter: one continuous gradient across the whole track (components.md);
+         the fill's WIDTH shows the level, the color itself never changes with it. -->
+    <LinearGradientBrush x:Key="level-meter-gradient" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#4ECCC0" Offset="0" />
+        <GradientStop Color="#4ECCC0" Offset="0.7" />
+        <GradientStop Color="#F5A623" Offset="0.9" />
+        <GradientStop Color="#E5484D" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Type -->
+    <FontFamily x:Key="font-sans">Segoe UI, Inter</FontFamily>
+    <!-- tokens.json lists Cascadia Mono first, but on this machine its "+" glyph renders
+         broken (clipped to a bare "-") at these sizes/weights. Consolas first avoids
+         showing an audio app user a wrong gain sign; Cascadia Mono stays as fallback
+         in case this turns out to be specific to this machine's font build. -->
+    <FontFamily x:Key="font-mono">Consolas, Cascadia Mono</FontFamily>
+
+    <Style x:Key="wordmark" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
+        <Setter Property="FontSize" Value="24" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource text-primary}" />
+    </Style>
+    <Style x:Key="subtitle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource text-secondary}" />
+    </Style>
+    <Style x:Key="section-label" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource text-secondary}" />
+    </Style>
+    <Style x:Key="body" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{StaticResource text-primary}" />
+    </Style>
+    <Style x:Key="control-label" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource text-secondary}" />
+        <Style.Triggers>
+            <!-- IsEnabled is coerced from ancestors, so this also fires when a containing
+                 row (e.g. Bass/Treble/Preamp under "Equalizer enabled") is disabled. -->
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource text-disabled}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="button-label" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="caption" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource text-secondary}" />
+    </Style>
+    <Style x:Key="value-lg" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-mono}" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource text-primary}" />
+        <!-- The window sets TextFormattingMode="Display" globally for crisper sans text,
+             but that mode clips Cascadia Mono's "+" glyph at this weight/size; Ideal renders it correctly. -->
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource text-disabled}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="value-sm" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-mono}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource text-primary}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+    </Style>
+    <Style x:Key="freq-label" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-mono}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{StaticResource text-secondary}" />
+    </Style>
+
+    <!-- Spacing (reference values; layout code uses the matching literal pixel amounts,
+         since Thickness/Margin setters can't bind a plain sys:Double resource). -->
+    <sys:Double x:Key="space-1">4</sys:Double>
+    <sys:Double x:Key="space-2">8</sys:Double>
+    <sys:Double x:Key="space-3">12</sys:Double>
+    <sys:Double x:Key="space-4">16</sys:Double>
+    <sys:Double x:Key="space-5">20</sys:Double>
+    <sys:Double x:Key="space-6">24</sys:Double>
+    <sys:Double x:Key="space-7">28</sys:Double>
+    <sys:Double x:Key="space-8">32</sys:Double>
+
+    <!-- Radius -->
+    <CornerRadius x:Key="radius-sm">4</CornerRadius>
+    <CornerRadius x:Key="radius-md">8</CornerRadius>
+    <CornerRadius x:Key="radius-lg">12</CornerRadius>
+    <CornerRadius x:Key="radius-full">999</CornerRadius>
+
+    <!-- Shadow: DropShadowEffect renders one shadow layer; using the token's more
+         prominent second layer (0 8px 24px rgba(0,0,0,0.35) / 0 4px 12px rgba(0,0,0,0.5)). -->
+    <DropShadowEffect x:Key="elevation-panel" Color="Black" Direction="270" ShadowDepth="8" BlurRadius="24" Opacity="0.35" />
+    <DropShadowEffect x:Key="elevation-popover" Color="Black" Direction="270" ShadowDepth="4" BlurRadius="12" Opacity="0.5" />
+
+</ResourceDictionary>

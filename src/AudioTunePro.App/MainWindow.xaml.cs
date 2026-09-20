@@ -12,12 +12,17 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private bool _isExiting;
+    private bool _isLoaded;
 
     public MainWindow()
     {
         InitializeComponent();
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
+        // WindowChrome (WindowStyle="None") can fire a spurious StateChanged(Minimized)
+        // during startup layout, before the window has ever been shown — ignore state
+        // changes until Loaded so that doesn't hide the window before the user sees it.
+        Loaded += (_, _) => _isLoaded = true;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -79,17 +84,37 @@ public partial class MainWindow : Window
 
     private void Reset_Click(object sender, RoutedEventArgs e) => _viewModel.ResetCurrentPreset();
 
-    private const double CeilingStepDb = 0.5;
+    // --- Custom TitleBar chrome (WindowStyle="None" gives up the native title bar entirely) ---
 
-    private void CeilingDown_Click(object sender, RoutedEventArgs e) =>
-        _viewModel.LimiterCeilingDb = Math.Round(_viewModel.LimiterCeilingDb - CeilingStepDb, 1);
+    private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            return;
+        }
 
-    private void CeilingUp_Click(object sender, RoutedEventArgs e) =>
-        _viewModel.LimiterCeilingDb = Math.Round(_viewModel.LimiterCeilingDb + CeilingStepDb, 1);
+        if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed) DragMove();
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void Maximize_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     private void Window_StateChanged(object? sender, EventArgs e)
     {
-        if (WindowState == WindowState.Minimized) Hide();
+        if (_isLoaded && WindowState == WindowState.Minimized)
+        {
+            Hide();
+            return;
+        }
+
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeIcon.Visibility = maximized ? Visibility.Collapsed : Visibility.Visible;
+        RestoreIcon.Visibility = maximized ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)

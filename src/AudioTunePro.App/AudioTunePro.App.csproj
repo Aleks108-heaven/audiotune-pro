@@ -14,6 +14,15 @@
     <Resource Include="Assets\icon.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Linked, not copied: design-system/AudioTunePro.Tokens.xaml stays the single
+         source of truth for design tokens instead of a duplicated in-project copy. -->
+    <Page Include="..\..\design-system\AudioTunePro.Tokens.xaml" Link="Views\AudioTunePro.Tokens.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>

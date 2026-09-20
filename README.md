@@ -114,6 +114,10 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
   for the exact math.
 - **Live output level meter** via WASAPI loopback capture (visual only —
   negligible CPU cost).
+- **PeakIndicator badge**: a Safe / Approaching ceiling / Near clipping status
+  next to the estimated peak reading, driven by the same gain math as the EQ
+  faders. When Auto-gain protection is off, it correctly reads against true
+  0 dBFS clipping rather than the (in that state, inert) configured ceiling.
 - **System tray**: closing the window keeps AudioTune Pro (and your EQ)
   running in the background; use the tray menu to reopen or exit.
 - **Start with Windows** toggle.
@@ -143,9 +147,31 @@ loaded, not something that grows with usage. Turning off **"Show level
 meter"** stops the one background thread doing recurring work (WASAPI
 loopback capture) if you want the smallest possible footprint.
 
+## Design system
+
+The UI's visual design — colors, type, spacing, per-control behavior — is
+driven by tokens checked into `design-system/`: `README.md` is the brand
+book, `tokens.json` the values, `components.md` the per-control guidelines.
+`design-system/AudioTunePro.Tokens.xaml` is a WPF `ResourceDictionary`
+generated from `tokens.json` and linked directly into
+`AudioTunePro.App.csproj` (not copied) as the single source of truth,
+merged in `App.xaml` ahead of `Views/Styles.xaml`.
+
+Notable pieces built on those tokens: a custom `WindowChrome`-based title bar
+(the native title bar is fully replaced), EQ faders and the Limiter's
+PeakIndicator badge that derive their color live from gain relative to the
+limiter ceiling (`SignalState`/`SignalStateCalculator`,
+`src/AudioTunePro.App/ViewModels/`), and a global 2px keyboard focus ring
+applied via `SystemParameters.FocusVisualStyleKey`.
+
 ## Project layout
 
 ```
+design-system/
+  README.md                Brand book: color/type/spacing rules per control.
+  tokens.json               Source-of-truth token values.
+  components.md              Per-control implementation notes.
+  AudioTunePro.Tokens.xaml    Generated WPF ResourceDictionary, linked into the app.
 src/
   AudioTunePro.Core/        Platform-agnostic: EQ model, Equalizer APO config
                              generator, auto-gain limiter math, built-in presets.

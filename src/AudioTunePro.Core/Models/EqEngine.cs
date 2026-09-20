@@ -69,17 +69,9 @@ public sealed class LimiterSettings
     /// </summary>
     public double CeilingDb { get; set; } = -0.3;
 
-    /// <summary>
-    /// Soft-knee output limiter implemented via Equalizer APO's built-in
-    /// "GraphicEQ"/"Preamp" + hard clamp fallback. Protects against transient
-    /// peaks that static gain trimming alone can't catch (e.g. sudden loud content).
-    /// </summary>
-    public bool EnableOutputLimiter { get; set; } = true;
-
     public LimiterSettings Clone() => new()
     {
         AutoGainProtection = AutoGainProtection,
         CeilingDb = CeilingDb,
-        EnableOutputLimiter = EnableOutputLimiter,
     };
 }
