@@ -14,9 +14,14 @@ public static class PresetLibrary
 {
     public static IReadOnlyList<Preset> BuiltIns { get; } = Build();
 
-    private static EqEngine Make(double bass, double treble, double preamp, params double[] bandGains)
+    private static EqEngine Make(double bass, double treble, double preamp, params double[] bandGains) =>
+        MakeWithSurround(SurroundMode.Off, 0.5, bass, treble, preamp, bandGains);
+
+    private static EqEngine MakeWithSurround(SurroundMode surround, double amount, double bass, double treble, double preamp, params double[] bandGains)
     {
         var engine = new EqEngine { BassDb = bass, TrebleDb = treble, PreampDb = preamp };
+        engine.Surround.Mode = surround;
+        engine.Surround.Amount = amount;
         for (int i = 0; i < engine.Bands.Count && i < bandGains.Length; i++)
             engine.Bands[i].GainDb = bandGains[i];
         return engine;
@@ -38,7 +43,7 @@ public static class PresetLibrary
                           "bass roll-off below ~150 Hz, tames a harsh 2-4 kHz peak common on " +
                           "small laptop drivers, and lifts presence for clarity at low volume.",
             IsBuiltIn = true,
-            Engine = Make(bass: 3.5, treble: 1.5, preamp: -1.5,
+            Engine = MakeWithSurround(SurroundMode.Auto, 0.4, bass: 3.5, treble: 1.5, preamp: -1.5,
                 /*31*/ 4.0, /*62*/ 5.5, /*125*/ 4.0, /*250*/ 1.5, /*500*/ 0.0,
                 /*1k*/ 0.0, /*2k*/ -2.0, /*4k*/ -2.5, /*8k*/ 1.5, /*16k*/ 1.0),
         },
@@ -48,7 +53,7 @@ public static class PresetLibrary
             Description = "Gentler baseline for headphones plugged into the Vivobook's jack — " +
                           "light bass lift and a smoothed treble for long listening sessions.",
             IsBuiltIn = true,
-            Engine = Make(bass: 2.0, treble: 1.0, preamp: -1.0,
+            Engine = MakeWithSurround(SurroundMode.Auto, 0.5, bass: 2.0, treble: 1.0, preamp: -1.0,
                 /*31*/ 2.5, /*62*/ 2.5, /*125*/ 1.5, /*250*/ 0.5, /*500*/ 0.0,
                 /*1k*/ 0.0, /*2k*/ -0.5, /*4k*/ -1.0, /*8k*/ 0.5, /*16k*/ 0.5),
         },

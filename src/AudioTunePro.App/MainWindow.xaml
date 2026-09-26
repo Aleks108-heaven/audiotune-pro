@@ -133,6 +133,20 @@
                         <Button Grid.Column="1" Content="Save As" Style="{StaticResource AccentButton}" Click="SavePreset_Click" />
                     </Grid>
 
+                    <TextBlock Text="VOLUME" Style="{StaticResource section-label}" Margin="0,0,0,8" />
+                    <Grid Margin="0,0,0,20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="60" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="56" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="System" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                        <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="0" Maximum="100"
+                                Value="{Binding Volume}" />
+                        <TextBlock Grid.Column="2" Text="{Binding Volume, StringFormat={}{0:0}%}"
+                                   Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                    </Grid>
+
                     <TextBlock Text="TONE" Style="{StaticResource section-label}" Margin="0,0,0,8" />
                     <StackPanel IsEnabled="{Binding EnableEqualizer}">
                         <Grid Margin="0,0,0,6">
@@ -172,6 +186,39 @@
                                        Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
                         </Grid>
                     </StackPanel>
+
+                    <TextBlock Text="3D SURROUND" Style="{StaticResource section-label}" Margin="0,0,0,10" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <RadioButton GroupName="Surround" Content="Off" IsChecked="{Binding SurroundOff}" Margin="0,0,14,0" />
+                        <RadioButton GroupName="Surround" Content="Auto" IsChecked="{Binding SurroundAuto}" Margin="0,0,14,0" />
+                        <RadioButton GroupName="Surround" Content="Speakers" IsChecked="{Binding SurroundSpeakers}" Margin="0,0,14,0" />
+                        <RadioButton GroupName="Surround" Content="Headphones" IsChecked="{Binding SurroundHeadphones}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding SurroundStatus}" Style="{StaticResource caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <Grid Margin="0,0,0,6" IsEnabled="{Binding SurroundActive}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="60" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="56" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Amount" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                        <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="0" Maximum="1"
+                                Value="{Binding SurroundAmount}" />
+                        <TextBlock Grid.Column="2" Text="{Binding SurroundAmount, StringFormat={}{0:P0}}"
+                                   Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Grid Margin="0,0,0,20" Visibility="{Binding ShowHrtfRow, Converter={x:Static vm:BoolToVisibleConverter.Instance}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding HrtfFileName}" Style="{StaticResource caption}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="1" Content="HRTF file…" Style="{StaticResource AccentButton}"
+                                Margin="8,0,0,0" Click="BrowseHrtf_Click" />
+                        <Button Grid.Column="2" Content="Clear" Margin="6,0,0,0" Click="ClearHrtf_Click" />
+                    </Grid>
 
                     <TextBlock Text="LIMITER — CLIPPING PROTECTION" Style="{StaticResource section-label}" Margin="0,0,0,10" />
                     <CheckBox Content="Auto-gain protection" IsChecked="{Binding AutoGainProtection}" Margin="0,0,0,10" />

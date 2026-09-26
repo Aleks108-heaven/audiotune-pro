@@ -23,15 +23,20 @@ public static class EqualizerApoConfigGenerator
         sb.AppendLine($"# Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine();
 
+        double surroundTrim = engine.Limiter.AutoGainProtection ? SurroundTrimDb(engine.Surround) : 0.0;
+
         if (!engine.EnableEqualizer)
         {
             sb.AppendLine("# Equalizer disabled — passthrough (unity gain).");
-            sb.AppendLine("Preamp: 0.0 dB");
+            sb.AppendLine(surroundTrim < -0.05
+                ? FormattableString.Invariant($"Preamp: {surroundTrim:F2} dB")
+                : "Preamp: 0.0 dB");
+            AppendSurround(sb, engine.Surround);
             return sb.ToString();
         }
 
         double autoTrim = AutoGainLimiter.ComputeTrimDb(engine);
-        double totalPreamp = engine.PreampDb + autoTrim;
+        double totalPreamp = engine.PreampDb + autoTrim + surroundTrim;
 
         if (autoTrim < -0.05)
         {
@@ -62,6 +67,61 @@ public static class EqualizerApoConfigGenerator
                 $"Filter {filterIndex++}: ON HSC Fc 6500 Hz Gain {engine.TrebleDb:F1} dB Q 0.9"));
         }
 
+        AppendSurround(sb, engine.Surround);
         return sb.ToString();
+    }
+
+    /// <summary>Speaker-widening side gain: 1.0 (no change) up to 1.8 at full amount.</summary>
+    private static double WidenFactor(SurroundSettings s) => 1.0 + Math.Clamp(s.Amount, 0, 1) * 0.8;
+
+    /// <summary>
+    /// Preamp trim (dB, ≤ 0) that keeps the widening matrix from clipping even on fully
+    /// out-of-phase content, where the side signal is boosted by the widen factor.
+    /// Crossfeed is built to sum to unity for mono material, so it needs no trim.
+    /// </summary>
+    public static double SurroundTrimDb(SurroundSettings s) =>
+        s.Mode == SurroundMode.Speakers ? -20.0 * Math.Log10(WidenFactor(s)) : 0.0;
+
+    private static void AppendSurround(StringBuilder sb, SurroundSettings s)
+    {
+        if (s.Mode is SurroundMode.Off or SurroundMode.Auto) return; // Auto must be resolved by the caller
+
+        sb.AppendLine();
+        sb.AppendLine("Channel: ALL");
+
+        if (s.Mode == SurroundMode.Speakers)
+        {
+            // Mid/side widening as a plain 2x2 matrix: L' = a*L + b*R, R' = a*R + b*L,
+            // with a = (1+k)/2 and b = (1-k)/2. Mono content is unchanged; the side
+            // (difference) signal is scaled by k. No filters, no delay — near-zero CPU.
+            double k = WidenFactor(s);
+            double a = (1 + k) / 2, b = (1 - k) / 2;
+            sb.AppendLine(FormattableString.Invariant($"# Surround: speaker widening x{k:F2}"));
+            sb.AppendLine(FormattableString.Invariant($"Copy: L={a:F4}*L+{b:F4}*R R={a:F4}*R+{b:F4}*L"));
+            return;
+        }
+
+        string? hrtf = s.HrtfFilePath?.Trim();
+        if (!string.IsNullOrEmpty(hrtf) && hrtf.IndexOfAny(new[] { '\r', '\n' }) < 0)
+        {
+            sb.AppendLine("# Surround: headphone 3D via HRTF convolution");
+            sb.AppendLine("Convolution: " + hrtf);
+            return;
+        }
+
+        // Crossfeed: each ear also hears the opposite channel, low-passed (head shadow)
+        // and ~0.27 ms late (interaural delay). g0 + c = 1 so mono level is preserved.
+        // Cost: two biquads and a short delay.
+        double c = Math.Pow(10, (-14 + 10 * Math.Clamp(s.Amount, 0, 1)) / 20.0);
+        double g0 = 1.0 / (1.0 + c);
+        double g1 = c / (1.0 + c);
+        sb.AppendLine("# Surround: headphone 3D via crossfeed");
+        sb.AppendLine("Copy: AUX0=R AUX1=L");
+        sb.AppendLine("Channel: AUX0 AUX1");
+        sb.AppendLine("Filter: ON LP Fc 700 Hz");
+        sb.AppendLine("Delay: 0.27 ms");
+        sb.AppendLine("Channel: ALL");
+        sb.AppendLine(FormattableString.Invariant(
+            $"Copy: L={g0:F4}*L+{g1:F4}*AUX0 R={g0:F4}*R+{g1:F4}*AUX1"));
     }
 }

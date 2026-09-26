@@ -71,6 +71,21 @@ public partial class MainWindow : Window
         _viewModel.SaveAsNewPreset(name);
     }
 
+    private void BrowseHrtf_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose an HRTF / binaural impulse response",
+            Filter = "WAV impulse response (*.wav)|*.wav",
+        };
+        var hrtfDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AudioTunePro", "hrtf");
+        if (System.IO.Directory.Exists(hrtfDir)) dialog.InitialDirectory = hrtfDir;
+        if (dialog.ShowDialog(this) == true) _viewModel.SetHrtfFile(dialog.FileName);
+    }
+
+    private void ClearHrtf_Click(object sender, RoutedEventArgs e) => _viewModel.SetHrtfFile(null);
+
     private void DeletePreset_Click(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedPreset is null || _viewModel.SelectedPreset.IsBuiltIn) return;

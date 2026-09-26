@@ -16,6 +16,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly EqualizerApoInstallService _apo;
     private readonly StartupRegistrationService _startup;
     private readonly LoopbackMeterService _meter;
+    private readonly OutputDeviceService _output;
     private readonly DispatcherTimer _applyDebounce;
 
     private EqEngine _engine = new();
@@ -35,6 +36,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _meter = new LoopbackMeterService();
         _meter.LevelChanged += level =>
             App.Current.Dispatcher.BeginInvoke(() => LevelMeter = level);
+
+        _output = new OutputDeviceService();
+        _output.DeviceChanged += () => App.Current.Dispatcher.BeginInvoke(() =>
+        {
+            RaiseSurroundChanged();
+            OnPropertyChanged(nameof(Volume));
+            OnEqChanged();
+        });
+        _output.VolumeChanged += _ => App.Current.Dispatcher.BeginInvoke(() => OnPropertyChanged(nameof(Volume)));
 
         _applyDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _applyDebounce.Tick += (_, _) =>
@@ -88,6 +98,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(LimiterCeilingDb));
         OnPropertyChanged(nameof(EstimatedPeakDb));
         OnPropertyChanged(nameof(PeakState));
+        RaiseSurroundChanged();
 
         _settings.ActivePresetName = preset.Name;
         _store.SaveSettings(_settings);
@@ -152,7 +163,98 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public double EstimatedPeakDb => AutoGainLimiter.EstimatePeakBoostDb(_engine);
+    // --- System volume (default playback device) ---
+
+    /// <summary>Windows master volume for the current output, 0..100.</summary>
+    public double Volume
+    {
+        get => (_output.Volume ?? 0f) * 100.0;
+        set { _output.Volume = (float)(value / 100.0); OnPropertyChanged(); }
+    }
+
+    // --- 3D surround ---
+
+    public bool SurroundAuto
+    {
+        get => _engine.Surround.Mode == SurroundMode.Auto;
+        set { if (value) SetSurroundMode(SurroundMode.Auto); }
+    }
+
+    /// <summary>The mode actually in effect once Auto is resolved against the current output device.</summary>
+    public SurroundMode EffectiveSurroundMode =>
+        _engine.ResolveSurround(_output.Kind).Surround.Mode;
+
+    public string SurroundStatus => _engine.Surround.Mode switch
+    {
+        SurroundMode.Auto => $"Auto: {(_output.Kind == OutputKind.Headphones ? "headphones" : "speakers")} detected" +
+                             (string.IsNullOrEmpty(_output.DeviceName) ? "" : $" ({_output.DeviceName})"),
+        _ => string.Empty,
+    };
+
+    public bool SurroundOff
+    {
+        get => _engine.Surround.Mode == SurroundMode.Off;
+        set { if (value) SetSurroundMode(SurroundMode.Off); }
+    }
+
+    public bool SurroundSpeakers
+    {
+        get => _engine.Surround.Mode == SurroundMode.Speakers;
+        set { if (value) SetSurroundMode(SurroundMode.Speakers); }
+    }
+
+    public bool SurroundHeadphones
+    {
+        get => _engine.Surround.Mode == SurroundMode.Headphones;
+        set { if (value) SetSurroundMode(SurroundMode.Headphones); }
+    }
+
+    /// <summary>Shows the HRTF file row whenever headphone processing is in effect (manual or Auto).</summary>
+    public bool ShowHrtfRow => EffectiveSurroundMode == SurroundMode.Headphones;
+
+    public bool SurroundActive => _engine.Surround.Mode != SurroundMode.Off;
+
+    public double SurroundAmount
+    {
+        get => _engine.Surround.Amount;
+        set { _engine.Surround.Amount = Math.Clamp(value, 0, 1); OnPropertyChanged(); OnEqChanged(); }
+    }
+
+    public string HrtfFileName =>
+        string.IsNullOrWhiteSpace(_engine.Surround.HrtfFilePath)
+            ? "Crossfeed (no HRTF file)"
+            : Path.GetFileName(_engine.Surround.HrtfFilePath);
+
+    public void SetHrtfFile(string? path)
+    {
+        _engine.Surround.HrtfFilePath = string.IsNullOrWhiteSpace(path) ? null : path;
+        OnPropertyChanged(nameof(HrtfFileName));
+        OnEqChanged();
+    }
+
+    private void SetSurroundMode(SurroundMode mode)
+    {
+        if (_engine.Surround.Mode == mode) return;
+        _engine.Surround.Mode = mode;
+        RaiseSurroundChanged();
+        OnEqChanged();
+    }
+
+    private void RaiseSurroundChanged()
+    {
+        OnPropertyChanged(nameof(SurroundAuto));
+        OnPropertyChanged(nameof(SurroundStatus));
+        OnPropertyChanged(nameof(EffectiveSurroundMode));
+        OnPropertyChanged(nameof(SurroundOff));
+        OnPropertyChanged(nameof(SurroundSpeakers));
+        OnPropertyChanged(nameof(SurroundHeadphones));
+        OnPropertyChanged(nameof(SurroundActive));
+        OnPropertyChanged(nameof(ShowHrtfRow));
+        OnPropertyChanged(nameof(SurroundAmount));
+        OnPropertyChanged(nameof(HrtfFileName));
+    }
+
+    public double EstimatedPeakDb =>AutoGainLimiter.EstimatePeakBoostDb(_engine);
 
     /// <summary>
     /// Drives the Limiter section's PeakIndicator badge, using the same gain math as the faders.
@@ -194,7 +296,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var rendered = EqualizerApoConfigGenerator.Generate(_engine);
+            var rendered = EqualizerApoConfigGenerator.Generate(_engine.ResolveSurround(_output.Kind));
             _apo.ApplyConfig(rendered);
             StatusMessage = $"Applied at {DateTime.Now:HH:mm:ss}";
         }
@@ -272,5 +374,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         _applyDebounce.Stop();
         _meter.Dispose();
+        _output.Dispose();
     }
 }

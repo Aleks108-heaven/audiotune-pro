@@ -27,6 +27,8 @@ public sealed class EqEngine
 
     public LimiterSettings Limiter { get; set; } = new();
 
+    public SurroundSettings Surround { get; set; } = new();
+
     public EqEngine()
     {
         Bands = StandardBandFrequencies.Select(f => new EqBand(f)).ToList();
@@ -42,7 +44,17 @@ public sealed class EqEngine
             PreampDb = PreampDb,
             EnableEqualizer = EnableEqualizer,
             Limiter = Limiter.Clone(),
+            Surround = Surround.Clone(),
         };
+    }
+
+    /// <summary>Returns a copy with <see cref="SurroundMode.Auto"/> replaced by the mode matching the output device.</summary>
+    public EqEngine ResolveSurround(OutputKind output)
+    {
+        var copy = Clone();
+        if (copy.Surround.Mode == SurroundMode.Auto)
+            copy.Surround.Mode = output == OutputKind.Headphones ? SurroundMode.Headphones : SurroundMode.Speakers;
+        return copy;
     }
 
     public void Reset()

@@ -1,7 +1,8 @@
 # AudioTune Pro — Windows 11 System-Wide Equalizer
 
 A system-wide equalizer for Windows 11: a 10-band graphic EQ, bass/treble
-shelving, clipping-protection limiter, and presets tuned for the ASUS
+shelving, 3D surround (speaker widening and headphone crossfeed/HRTF),
+clipping-protection limiter, a system volume slider, and presets tuned for the ASUS
 Vivobook's built-in speakers and headphone output.
 
 ## How it works
@@ -66,6 +67,24 @@ present if you can build this repo). Add `--self-contained true` if you need
 to hand the folder to a machine without .NET installed (produces a much
 larger output).
 
+### HRTF impulse response (optional)
+
+`tools/build_hrtf.py` builds a 4-channel "true stereo" impulse response
+(virtual speakers at ±30°) from the free
+[MIT KEMAR](http://sound.media.mit.edu/resources/KEMAR.html) compact HRTF set:
+
+```powershell
+# download and unzip compact.zip from the MIT page, then:
+python tools/build_hrtf.py <path-to-unzipped-compact> "$env:APPDATA\AudioTunePro\hrtf\mit-kemar-30deg.wav"
+```
+
+Then pick that file with **HRTF file…** in Headphones mode. The generated
+`.wav` is deliberately **not** committed or bundled in the installer: the MIT
+download ships without a licence file, and its terms may be limited to
+educational/research use, so check them before redistributing it. The script
+needs `numpy`. Files with 2 channels are convolved per ear; 4 channels are a
+true-stereo IR (L→L, L→R, R→L, R→R).
+
 ### Installer
 
 `CI-artefact/AudioTunePro-Setup.msi` is a real installer, built with the
@@ -105,6 +124,25 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
   - *ASUS Vivobook Headphones* — a gentler baseline for the headphone jack.
   - Flat, Bass Boost, Vocal Boost, Movie, Gaming, Podcast/Voice Call,
     Classical, Rock, Pop, Electronic — plus save/delete your own.
+- **3D surround**, chosen automatically for your output device (or forced
+  manually). All of it runs inside Equalizer APO, chosen to be as light on the
+  CPU as it allows:
+  - **Speakers**: stereo widening as a plain 2x2 gain matrix (no filters, no
+    delay, near-zero CPU). The master preamp is trimmed by up to ~5 dB at full
+    strength so out-of-phase material can't clip, so widening sounds slightly
+    quieter. The trim only applies while Auto-gain protection is on.
+  - **Headphones**: crossfeed (each ear also hears the opposite channel,
+    low-passed at 700 Hz and delayed 0.27 ms), which keeps mono level
+    unchanged. Cost: two biquads and a short delay.
+  - **Headphones + HRTF file** (optional): pick a short binaural `.wav` and
+    Equalizer APO convolves with it for true 3D. This is the only mode with a
+    noticeable CPU cost; the Amount slider does not affect it.
+  - **Auto** reads the default output's form factor (speakers / headphones /
+    headset) via Windows Core Audio and switches when you plug in a jack or
+    change device. It is event-driven, with no polling. Off / Speakers /
+    Headphones override it.
+- **System volume slider** for the current playback device, kept in sync
+  with the Windows volume.
 - **Clipping-protection limiter** ("Auto-gain protection"): since Equalizer
   APO has no built-in lookahead/brickwall limiter, AudioTune Pro estimates
   the worst-case constructive peak your curve could produce (accounting for
@@ -173,12 +211,15 @@ design-system/
   components.md              Per-control implementation notes.
   AudioTunePro.Tokens.xaml    Generated WPF ResourceDictionary, linked into the app.
 src/
-  AudioTunePro.Core/        Platform-agnostic: EQ model, Equalizer APO config
+  AudioTunePro.Core/        Platform-agnostic: EQ + surround model, Equalizer APO config
                              generator, auto-gain limiter math, built-in presets.
   AudioTunePro.Core.Tests/  xUnit tests for the Core logic.
   AudioTunePro.App/         WPF UI, Equalizer APO detection/install glue,
-                             tray icon, WASAPI level meter, settings storage.
+                             tray icon, WASAPI level meter, output-device detection
+                             and volume, settings storage.
                              Assets/icon.ico is the app/shortcut icon.
+tools/
+  build_hrtf.py             Builds the optional KEMAR HRTF impulse response.
 installer/
   AudioTunePro.wxs          WiX v5 source for the MSI installer (see above).
   License.rtf               Shown on the installer's license page.
@@ -196,5 +237,10 @@ User settings and custom presets are stored as JSON under
 - The limiter is a static gain-trim safeguard computed from the EQ curve,
   not a real-time lookahead/brickwall limiter — extremely loud, already
   near-0dBFS source material can still clip in rare cases.
+- Surround config lines (notably the `AUX0`/`AUX1` crossfeed channels and the
+  4-channel HRTF order) follow Equalizer APO's documented syntax but were not
+  verified against every APO version; Equalizer APO's Editor flags syntax errors.
+- Auto detection relies on the driver reporting the endpoint form factor;
+  if a device is misclassified, choose Speakers or Headphones manually.
 - The level meter reflects the *pre-EQ* system mix (WASAPI loopback on the
   default render device), not Equalizer APO's post-processing output.
