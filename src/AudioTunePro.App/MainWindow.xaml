@@ -113,8 +113,11 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Left: presets + tone controls -->
-                <StackPanel Grid.Column="0">
+                <!-- Left: presets + tone controls. Scrolls instead of clipping when the window
+                     is shorter than the content (e.g. restored/default size vs. maximized). -->
+                <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="0,0,10,0">
                     <TextBlock Text="PRESET" Style="{StaticResource section-label}" Margin="0,0,0,8" />
                     <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
                               DisplayMemberPath="Name" Margin="0,0,0,4" />
@@ -214,10 +217,18 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{Binding HrtfFileName}" Style="{StaticResource caption}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   ToolTipService.ShowDuration="30000">
+                            <TextBlock.ToolTip>
+                                <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                                           Text="Optional. Without a file, Headphones mode uses built-in crossfeed, which works well for most people. An HRTF file is a 2-channel binaural impulse-response WAV for personalized 3D positioning — it isn't bundled with AudioTune Pro. Free sets: HeSuVi's bundled HRIRs, or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
+                            </TextBlock.ToolTip>
+                        </TextBlock>
                         <Button Grid.Column="1" Content="HRTF file…" Style="{StaticResource AccentButton}"
-                                Margin="8,0,0,0" Click="BrowseHrtf_Click" />
-                        <Button Grid.Column="2" Content="Clear" Margin="6,0,0,0" Click="ClearHrtf_Click" />
+                                Margin="8,0,0,0" Click="BrowseHrtf_Click"
+                                ToolTip="Pick a 2-channel HRTF/BRIR impulse-response .wav. None ships with the app — see HeSuVi or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
+                        <Button Grid.Column="2" Content="Clear" Margin="6,0,0,0" Click="ClearHrtf_Click"
+                                ToolTip="Remove the HRTF file and fall back to built-in crossfeed." />
                     </Grid>
 
                     <TextBlock Text="LIMITER — CLIPPING PROTECTION" Style="{StaticResource section-label}" Margin="0,0,0,10" />
@@ -258,6 +269,7 @@
                     <CheckBox Content="Start with Windows" IsChecked="{Binding StartWithWindows}" Margin="0,0,0,10" />
                     <CheckBox Content="Show level meter" IsChecked="{Binding ShowLevelMeter}" Margin="0,0,0,10" />
                 </StackPanel>
+                </ScrollViewer>
 
                 <!-- Right: graphic EQ -->
                 <Border Grid.Column="2" Style="{StaticResource Panel}" Padding="20">
