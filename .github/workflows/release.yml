@@ -1,0 +1,94 @@
+name: Release installer
+
+# Builds the installer from a tag (v*) or by hand, signs it when signing secrets exist, and
+# uploads it with a SHA-256 checksum file. Unsigned builds still work (the sign steps are
+# skipped) so this can be tried before a certificate is bought.
+#
+# To enable signing, add these repository secrets (Settings > Secrets and variables > Actions):
+#   SIGNING_CERT_PFX_BASE64   the code-signing .pfx, base64-encoded:
+#                             [Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))
+#   SIGNING_CERT_PASSWORD     the .pfx password
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    env:
+      PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
+      PFX_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+    steps:
+      # Actions pinned to a full commit SHA (not a mutable tag), as in ci.yml.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      # --locked-mode: fail if any package would differ from packages.lock.json.
+      - name: Restore (locked)
+        run: dotnet restore AudioTunePro.slnx --locked-mode
+
+      - name: Test
+        run: dotnet test src/AudioTunePro.Core.Tests/AudioTunePro.Core.Tests.csproj --configuration Release --no-restore --verbosity normal
+
+      - name: Publish app
+        run: dotnet publish src/AudioTunePro.App/AudioTunePro.App.csproj -c Release -r win-x64 --self-contained false --no-restore -o CI-artefact
+
+      - name: Prepare certificate
+        if: env.PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+          "PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Sign binaries
+        if: env.PFX_BASE64 != ''
+        shell: pwsh
+        run: ./installer/sign.ps1 -Target Binaries -PfxPath $env:PFX_PATH -PfxPassword (ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force)
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          Push-Location installer
+          wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact/AudioTunePro-Setup.msi
+          Pop-Location
+
+      - name: Sign MSI
+        if: env.PFX_BASE64 != ''
+        shell: pwsh
+        run: ./installer/sign.ps1 -Target Msi -PfxPath $env:PFX_PATH -PfxPassword (ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force)
+
+      - name: Remove certificate
+        if: always() && env.PFX_PATH != ''
+        shell: pwsh
+        run: Remove-Item -Force $env:PFX_PATH -ErrorAction SilentlyContinue
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item CI-artefact/AudioTunePro-Setup.msi release/
+          Get-FileHash release/AudioTunePro-Setup.msi -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  AudioTunePro-Setup.msi" } |
+            Set-Content release/SHA256SUMS.txt
+          Get-Content release/SHA256SUMS.txt
+
+      - name: Upload installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: AudioTunePro-installer
+          path: release/
+          if-no-files-found: error

@@ -38,6 +38,8 @@
     <AssemblyTitle>AudioTune Pro — System-Wide Equalizer</AssemblyTitle>
     <Company>AudioTune Pro</Company>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <!-- Declared so the lock file also covers the win-x64 publish used for the installer. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
 </Project>

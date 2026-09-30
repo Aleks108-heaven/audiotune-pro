@@ -28,8 +28,16 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Restore
-        run: dotnet restore AudioTunePro.slnx
+      # --locked-mode: the build must use exactly the package versions in packages.lock.json.
+      - name: Restore (locked)
+        run: dotnet restore AudioTunePro.slnx --locked-mode
+
+      - name: Audit NuGet packages for known vulnerabilities
+        shell: pwsh
+        run: |
+          $out = dotnet list AudioTunePro.slnx package --vulnerable --include-transitive 2>&1 | Out-String
+          Write-Host $out
+          if ($out -match 'has the following vulnerable packages') { throw 'Vulnerable NuGet packages found.' }
 
       - name: Build
         run: dotnet build AudioTunePro.slnx --configuration Release --no-restore
