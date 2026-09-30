@@ -28,21 +28,26 @@
     <SolidColorBrush x:Key="accent-muted" Color="#4A5568" />
     <SolidColorBrush x:Key="signal-safe" Color="#4ECCC0" />
     <SolidColorBrush x:Key="signal-warn" Color="#F5A623" />
-    <SolidColorBrush x:Key="signal-danger" Color="#E5484D" />
+    <SolidColorBrush x:Key="signal-danger" Color="#EC5A5F" />
     <SolidColorBrush x:Key="warn-bg" Color="#241D12" />
     <SolidColorBrush x:Key="warn-border" Color="#3A2E15" />
     <SolidColorBrush x:Key="track-fill" Color="#1D212B" />
     <SolidColorBrush x:Key="toggle-track-off" Color="#2A2F3B" />
     <SolidColorBrush x:Key="toggle-track-on" Color="#4ECCC0" />
     <SolidColorBrush x:Key="focus-ring" Color="#4ECCC0" />
+    <SolidColorBrush x:Key="track-guide" Color="#5F6A80" />
 
-    <!-- LevelMeter: one continuous gradient across the whole track (components.md);
-         the fill's WIDTH shows the level, the color itself never changes with it. -->
+    <!-- LevelMeter: one continuous gradient across the whole track (components.md). The meter maps
+         -18..+6 dBFS onto the track (see MainViewModel) and reveals this gradient from the left, so each
+         color stays at a fixed dB: teal only up to -14, blending to amber by -10, amber to -4, blending
+         to red by 0, red from 0 dBFS up to the +6 dB over-range zone. -->
     <LinearGradientBrush x:Key="level-meter-gradient" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#4ECCC0" Offset="0" />
-        <GradientStop Color="#4ECCC0" Offset="0.7" />
-        <GradientStop Color="#F5A623" Offset="0.9" />
-        <GradientStop Color="#E5484D" Offset="1" />
+        <GradientStop Color="#4ECCC0" Offset="0.1667" />
+        <GradientStop Color="#F5A623" Offset="0.3333" />
+        <GradientStop Color="#F5A623" Offset="0.5833" />
+        <GradientStop Color="#EC5A5F" Offset="0.75" />
+        <GradientStop Color="#EC5A5F" Offset="1" />
     </LinearGradientBrush>
 
     <!-- Type -->
@@ -126,8 +131,8 @@
         <Setter Property="Foreground" Value="{StaticResource text-secondary}" />
     </Style>
 
-    <!-- Spacing (reference values; layout code uses the matching literal pixel amounts,
-         since Thickness/Margin setters can't bind a plain sys:Double resource). -->
+    <!-- Spacing (reference values; layout code uses the matching literal pixel amounts, always
+         one of these eight steps, since Thickness/Margin setters can't bind a plain sys:Double resource). -->
     <sys:Double x:Key="space-1">4</sys:Double>
     <sys:Double x:Key="space-2">8</sys:Double>
     <sys:Double x:Key="space-3">12</sys:Double>

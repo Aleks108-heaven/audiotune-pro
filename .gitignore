@@ -5,3 +5,8 @@ obj/
 
 # Published build output (regenerate with `dotnet publish`, see README) — not source-controlled.
 CI-artefact/
+
+# Code-signing material must never be committed
+*.pfx
+*.p12
+*.snk

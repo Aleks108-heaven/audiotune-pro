@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   AudioTune Pro installer, built with WiX Toolset v5 (free, no admin rights needed
-  to build). Produces a per-user MSI: installs to %LocalAppData%\Programs\AudioTune Pro
-  (no UAC elevation prompt), and adds Start Menu + Desktop shortcuts using the app's icon.
+  to build). Produces a per-machine MSI: installs to C:\Program Files\AudioTune Pro, which only
+  administrators can write to, so other programs running as your user can't swap the app for a
+  fake. Installing or updating shows one UAC prompt. Adds All-Users Start Menu + Desktop shortcuts.
+
+  Moving from 1.1.0 (per-user, in %LocalAppData%): Windows treats a per-machine package as a
+  separate product, so uninstall the old per-user version first; this installer detects it and
+  says so. Settings live in %AppData%\AudioTunePro and are kept.
 
   Build: dotnet publish the App project into CI-artefact, then run
     wix build installer/AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o CI-artefact/AudioTunePro-Setup.msi
@@ -13,24 +18,31 @@
 
   <Package Name="AudioTune Pro"
            Manufacturer="AudioTune Pro"
-           Version="1.1.0"
+           Version="1.2.0"
            UpgradeCode="27E9C73A-268E-4A6D-A174-91E7BED677BE"
            Language="1033"
-           Scope="perUser"
+           Scope="perMachine"
            Compressed="yes">
 
     <SummaryInformation Description="AudioTune Pro — System-Wide Equalizer" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of AudioTune Pro is already installed." />
+
+    <!-- The old per-user installer (1.0.x/1.1.0) wrote this HKCU value; while it is present the old copy
+         is still installed and would run side by side with this one. -->
+    <Property Id="OLDPERUSERINSTALL">
+      <RegistrySearch Id="OldPerUserInstall" Root="HKCU" Key="Software\AudioTunePro"
+                      Name="StartMenuShortcutInstalled" Type="raw" />
+    </Property>
+    <Launch Condition="NOT OLDPERUSERINSTALL"
+            Message="An older per-user version of AudioTune Pro is installed. Uninstall it first (Settings &gt; Apps), then run this installer again. Your settings are kept." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="AppIcon.ico" SourceFile="..\src\AudioTunePro.App\Assets\icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
     <Property Id="ARPHELPLINK" Value="https://github.com/Aleks108-heaven/audiotune-pro" />
 
-    <StandardDirectory Id="LocalAppDataFolder">
-      <Directory Id="ProgramsFolder" Name="Programs">
-        <Directory Id="INSTALLFOLDER" Name="AudioTune Pro" />
-      </Directory>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="AudioTune Pro" />
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
@@ -45,7 +57,7 @@
                   Target="[INSTALLFOLDER]AudioTunePro.exe"
                   WorkingDirectory="INSTALLFOLDER"
                   Icon="AppIcon.ico" />
-        <RegistryValue Root="HKCU" Key="Software\AudioTunePro" Name="DesktopShortcutInstalled"
+        <RegistryValue Root="HKLM" Key="Software\AudioTunePro" Name="DesktopShortcutInstalled"
                         Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </StandardDirectory>
@@ -64,7 +76,7 @@
                   Target="[System64Folder]msiexec.exe"
                   Arguments="/x [ProductCode]" />
         <RemoveFolder Id="RemoveAppProgramMenuFolder" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\AudioTunePro" Name="StartMenuShortcutInstalled"
+        <RegistryValue Root="HKLM" Key="Software\AudioTunePro" Name="StartMenuShortcutInstalled"
                         Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>

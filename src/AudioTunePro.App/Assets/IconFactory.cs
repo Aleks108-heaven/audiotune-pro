@@ -4,9 +4,9 @@ using System.Drawing.Drawing2D;
 namespace AudioTunePro.App.Assets;
 
 /// <summary>
-/// Draws AudioTune Pro's icon (a simple equalizer-bars glyph) at runtime instead
-/// of shipping a binary .ico asset, so the app has a distinct tray/taskbar icon
-/// with zero external files.
+/// Draws AudioTune Pro's icon (a simple equalizer-bars glyph) at runtime. This is only the
+/// fallback for the tray icon if the icon embedded in the EXE (Assets/icon.ico) can't be
+/// extracted; the colors are the design-system tokens surface-panel and accent-teal.
 /// </summary>
 public static class IconFactory
 {
@@ -18,11 +18,11 @@ public static class IconFactory
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
 
-            using var bg = new SolidBrush(Color.FromArgb(255, 30, 32, 40));
+            using var bg = new SolidBrush(Color.FromArgb(255, 0x16, 0x1A, 0x22) /* surface-panel */);
             g.FillEllipse(bg, 0, 0, size, size);
 
             // Four equalizer bars of varying height, teal accent.
-            var barColor = Color.FromArgb(255, 64, 200, 190);
+            var barColor = Color.FromArgb(255, 0x4E, 0xCC, 0xC0) /* accent-teal */;
             using var barBrush = new SolidBrush(barColor);
             float[] heights = { 0.35f, 0.75f, 0.5f, 0.9f };
             float margin = size * 0.16f;

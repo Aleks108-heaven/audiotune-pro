@@ -40,6 +40,27 @@ public sealed class SurroundSettings
     /// </summary>
     public string? HrtfFilePath { get; set; }
 
+    /// <summary>
+    /// The only kind of path allowed into the Equalizer APO config: the config is read by Windows'
+    /// audio service (audiodg.exe), so a path must be a plain, fully-qualified local .wav file.
+    /// Rejected: control characters (CR/LF would start a new config line), UNC/device paths
+    /// (would make the audio service open network or device paths), relative paths (resolved
+    /// against the service's own directory), NTFS alternate streams, wildcards and non-.wav files.
+    /// </summary>
+    public static bool IsSafeHrtfPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var p = path.Trim();
+
+        if (p.Length > 259) return false;
+        if (p.Any(char.IsControl)) return false;
+        if (p.IndexOfAny(new[] { '"', '<', '>', '|', '*', '?' }) >= 0) return false;
+        if (p.StartsWith(@"\\", StringComparison.Ordinal) || p.StartsWith("//", StringComparison.Ordinal)) return false;
+        if (p.IndexOf(':', 2 <= p.Length ? 2 : 0) >= 0) return false; // only the drive-letter colon
+        if (!Path.IsPathFullyQualified(p)) return false;
+        return p.EndsWith(".wav", StringComparison.OrdinalIgnoreCase);
+    }
+
     public SurroundSettings Clone() => new()
     {
         Mode = Mode,

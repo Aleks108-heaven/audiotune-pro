@@ -1,0 +1,16 @@
+<Project>
+
+  <!-- Pin every NuGet dependency (including transitive ones) to the exact version recorded in
+       each project's packages.lock.json, so a build can never silently pick up a newer, changed
+       or compromised package. CI restores in locked mode (the locked-mode restore option) and fails if a lock file is stale.
+       To update a package on purpose: change the version, run `dotnet restore AudioTunePro.slnx`
+       with the force-evaluate option, and commit the changed packages.lock.json files. -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Report known-vulnerable packages (direct and transitive) as warnings during restore/build. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+
+</Project>

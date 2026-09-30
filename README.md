@@ -90,14 +90,23 @@ true-stereo IR (L→L, L→R, R→L, R→R).
 `CI-artefact/AudioTunePro-Setup.msi` is a real installer, built with the
 [WiX Toolset](https://wixtoolset.org/) v5 (free — v6+ requires accepting a
 paid maintenance-fee EULA, so this project intentionally pins v5). Running it
-installs AudioTune Pro to `%LocalAppData%\Programs\AudioTune Pro` (per-user,
-**no admin/UAC prompt**) and adds:
+installs AudioTune Pro to `C:\Program Files\AudioTune Pro` (per-machine; one
+UAC prompt to install or update) and adds:
 
-- a **Desktop shortcut**
-- a **Start Menu** entry (with its own "Uninstall AudioTune Pro" shortcut)
+- an **All-Users Desktop shortcut**
+- an **All-Users Start Menu** entry (with its own "Uninstall AudioTune Pro" shortcut)
 - an entry in Windows Settings → Apps, for the standard uninstall flow
 
-both shortcuts and the app itself use the equalizer-bars icon in
+Program Files is writable only by administrators, so other programs running as
+your user can't replace the app with a fake. Settings stay per user in
+`%AppData%\AudioTunePro`, and "Start with Windows" is still a per-user setting.
+
+**Upgrading from 1.1.0 or earlier (per-user install in `%LocalAppData%`):**
+Windows treats the per-machine package as a separate product, so uninstall the
+old version first (Settings → Apps). The installer detects it and tells you.
+Your settings and presets are kept.
+
+Both shortcuts and the app itself use the equalizer-bars icon in
 `src/AudioTunePro.App/Assets/icon.ico`.
 
 To rebuild it after code changes (regenerate `CI-artefact/` first, see
@@ -109,6 +118,21 @@ wix extension add -g WixToolset.UI.wixext/5.0.2    # one-time
 cd installer
 wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact/AudioTunePro-Setup.msi
 ```
+
+### Reproducible, verifiable builds
+
+- **Locked packages:** every NuGet dependency (including transitive ones) is pinned to the exact
+  version and content hash in each project's `packages.lock.json` (enabled in
+  `Directory.Build.props`). CI restores in locked mode and fails if anything differs. To update a
+  package on purpose: change the version, run `dotnet restore AudioTunePro.slnx --force-evaluate`,
+  and commit the changed lock files.
+- **Signed installer:** `.github/workflows/release.yml` (runs on a `v*` tag or manually) builds the
+  MSI, signs the app binaries and the MSI with `installer/sign.ps1` when the repository secrets
+  `SIGNING_CERT_PFX_BASE64` and `SIGNING_CERT_PASSWORD` exist, and uploads the installer with a
+  `SHA256SUMS.txt`. Without the secrets it still builds, unsigned. You can also sign locally:
+  `./installer/sign.ps1 -PfxPath cert.pfx -PfxPassword (Read-Host -AsSecureString)`, `wix build`,
+  then `./installer/sign.ps1 -Target Msi ...`. A code-signing certificate (from a public CA) is
+  required; `*.pfx` files are git-ignored.
 
 ## Features
 
@@ -151,13 +175,26 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
   safeguard, not real-time dynamics processing — see `AutoGainLimiter.cs`
   for the exact math.
 - **Live output level meter** via WASAPI loopback capture (visual only —
-  negligible CPU cost).
+  negligible CPU cost). Full-width bar on a -18..+6 dBFS scale (ticks every
+  6 dB, live dB readout): teal only at the bottom, amber through the middle,
+  red from 0 dBFS up, with the last 6 dB reserved for over-range. It falls off
+  smoothly, stops while the window is hidden or minimized, and follows the
+  default output device.
+- **Compact, resizable layout**: the sidebar (master switch, presets, volume,
+  tone, 3D surround, limiter) fits at the default window size and scrolls in
+  smaller windows; "Start with Windows" and "Show level meter" live in the footer.
+- **One instance only**: launching a second copy just brings the running one
+  to the front, so two copies never fight over the Equalizer APO config.
 - **PeakIndicator badge**: a Safe / Approaching ceiling / Near clipping status
   next to the estimated peak reading, driven by the same gain math as the EQ
   faders. When Auto-gain protection is off, it correctly reads against true
   0 dBFS clipping rather than the (in that state, inert) configured ceiling.
+- **Remembers your edits**: the live EQ state is saved as you change it and
+  re-applied at launch, so the sliders always match what you hear. An
+  "edited since saved" note appears until you Save As.
 - **System tray**: closing the window keeps AudioTune Pro (and your EQ)
-  running in the background; use the tray menu to reopen or exit.
+  running in the background (a one-time balloon says so); use the tray menu
+  to reopen or exit. Minimizing works normally.
 - **Start with Windows** toggle.
 
 ## Performance
@@ -195,12 +232,31 @@ generated from `tokens.json` and linked directly into
 `AudioTunePro.App.csproj` (not copied) as the single source of truth,
 merged in `App.xaml` ahead of `Views/Styles.xaml`.
 
-Notable pieces built on those tokens: a custom `WindowChrome`-based title bar
+In high-contrast mode the token brushes are remapped to system colors at launch. Notable pieces built on those tokens: a custom `WindowChrome`-based title bar
 (the native title bar is fully replaced), EQ faders and the Limiter's
 PeakIndicator badge that derive their color live from gain relative to the
 limiter ceiling (`SignalState`/`SignalStateCalculator`,
 `src/AudioTunePro.App/ViewModels/`), and a global 2px keyboard focus ring
 applied via `SystemParameters.FocusVisualStyleKey`.
+
+## Security notes
+
+- The app makes **no network connections** and listens on no ports; it only opens
+  the Equalizer APO download page in your browser when you click the button.
+- It runs as a normal user (never elevated) and reads/writes only its own
+  settings under `%AppData%\AudioTunePro` and Equalizer APO's include file.
+- **HRTF paths are validated**: because Equalizer APO's config is read by
+  Windows' audio service, only a plain, fully-qualified local `.wav` path is ever
+  written into it. Network/UNC paths, relative paths, alternate streams,
+  wildcards and anything containing a line break are rejected (tests in
+  `SecurityHardeningTests.cs`).
+- Settings and preset files over 2 MB are ignored, and loaded values are clamped
+  to their valid ranges.
+- Dependencies are pinned by lock files and audited for known vulnerabilities in CI
+  (see "Reproducible, verifiable builds"). CI actions are pinned to commit hashes.
+- Known limits: Equalizer APO's own `config` folder is writable by normal users
+  by design, so keep untrusted software off the machine; the installer is
+  unsigned until you add a code-signing certificate.
 
 ## Project layout
 
@@ -213,7 +269,8 @@ design-system/
 src/
   AudioTunePro.Core/        Platform-agnostic: EQ + surround model, Equalizer APO config
                              generator, auto-gain limiter math, built-in presets.
-  AudioTunePro.Core.Tests/  xUnit tests for the Core logic.
+  AudioTunePro.Core.Tests/  xUnit tests: EQ/limiter/config math, signal states,
+                             persistence and security hardening.
   AudioTunePro.App/         WPF UI, Equalizer APO detection/install glue,
                              tray icon, WASAPI level meter, output-device detection
                              and volume, settings storage.
@@ -223,6 +280,12 @@ tools/
 installer/
   AudioTunePro.wxs          WiX v5 source for the MSI installer (see above).
   License.rtf               Shown on the installer's license page.
+  sign.ps1                  Authenticode-signs the app binaries and the MSI.
+.github/workflows/
+  ci.yml                    Build + tests + vulnerability audit (locked restore).
+  release.yml               Builds, optionally signs, and uploads the installer.
+Directory.Build.props       Turns on NuGet lock files and package auditing.
+*/packages.lock.json        Exact pinned package versions (commit these).
 ```
 
 User settings and custom presets are stored as JSON under

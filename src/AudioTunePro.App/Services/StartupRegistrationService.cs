@@ -1,3 +1,4 @@
+using System.Security;
 using Microsoft.Win32;
 
 namespace AudioTunePro.App.Services;
@@ -8,25 +9,41 @@ public sealed class StartupRegistrationService
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "AudioTunePro";
 
-    public void SetEnabled(bool enabled)
+    /// <summary>Returns false (instead of throwing) if the registry can't be written, e.g. locked down by policy.</summary>
+    public bool SetEnabled(bool enabled)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true)
-            ?? Registry.CurrentUser.CreateSubKey(RunKeyPath);
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true)
+                ?? Registry.CurrentUser.CreateSubKey(RunKeyPath);
 
-        if (enabled)
-        {
-            var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
-            key.SetValue(ValueName, $"\"{exePath}\" --minimized");
+            if (enabled)
+            {
+                var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+                key.SetValue(ValueName, $"\"{exePath}\" --minimized");
+            }
+            else
+            {
+                key.DeleteValue(ValueName, throwOnMissingValue: false);
+            }
+            return true;
         }
-        else
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or System.IO.IOException)
         {
-            key.DeleteValue(ValueName, throwOnMissingValue: false);
+            return false;
         }
     }
 
     public bool IsEnabled()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-        return key?.GetValue(ValueName) is not null;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
+            return key?.GetValue(ValueName) is not null;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or System.IO.IOException)
+        {
+            return false;
+        }
     }
 }
