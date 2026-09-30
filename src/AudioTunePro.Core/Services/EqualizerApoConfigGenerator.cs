@@ -102,7 +102,7 @@ public static class EqualizerApoConfigGenerator
         }
 
         string? hrtf = s.HrtfFilePath?.Trim();
-        if (!string.IsNullOrEmpty(hrtf) && hrtf.IndexOfAny(new[] { '\r', '\n' }) < 0)
+        if (SurroundSettings.IsSafeHrtfPath(hrtf))
         {
             sb.AppendLine("# Surround: headphone 3D via HRTF convolution");
             sb.AppendLine("Convolution: " + hrtf);

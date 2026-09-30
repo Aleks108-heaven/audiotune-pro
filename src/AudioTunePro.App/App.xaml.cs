@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
 using AudioTunePro.App.Assets;
@@ -15,12 +16,31 @@ namespace AudioTunePro.App;
 public partial class App : Application
 {
     private NotifyIcon? _trayIcon;
+    private Mutex? _singleInstance;
+    private EventWaitHandle? _showSignal;
     private MainWindow? _mainWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        // One instance only: two copies would fight over the same Equalizer APO config file.
+        _singleInstance = new Mutex(true, @"Local\AudioTunePro.SingleInstance", out var isFirst);
+        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\AudioTunePro.ShowWindow");
+        if (!isFirst)
+        {
+            if (!e.Args.Contains("--minimized")) _showSignal.Set(); // ask the running copy to show itself
+            Shutdown();
+            return;
+        }
+        var signal = _showSignal;
+        new Thread(() =>
+        {
+            while (signal.WaitOne()) Dispatcher.BeginInvoke(() => ShowMainWindow());
+        }) { IsBackground = true, Name = "ShowWindowSignal" }.Start();
+
+        Views.HighContrastTheme.ApplyIfActive(Resources);
 
         var icon = LoadAppIcon();
 
@@ -48,6 +68,12 @@ public partial class App : Application
         }
     }
 
+    /// <summary>One-time balloon so closing the window doesn't look like the app (and its EQ) quit.</summary>
+    internal void ShowTrayHint() =>
+        _trayIcon?.ShowBalloonTip(5000, "AudioTune Pro is still running",
+            "Your equalizer stays active in the tray. Right-click the tray icon and choose Exit to quit.",
+            System.Windows.Forms.ToolTipIcon.Info);
+
     private void ShowMainWindow()
     {
         if (_mainWindow is null)
@@ -65,6 +91,7 @@ public partial class App : Application
     {
         _mainWindow?.ForceClose();
         _trayIcon?.Dispose();
+        _singleInstance?.Dispose();
         Shutdown();
     }
 

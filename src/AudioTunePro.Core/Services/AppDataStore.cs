@@ -15,6 +15,9 @@ public sealed class AppDataStore
         WriteIndented = true,
     };
 
+    /// <summary>Settings and presets are a few KB; anything far larger is corrupt or hostile and is not read.</summary>
+    private const long MaxFileBytes = 2 * 1024 * 1024;
+
     public string RootDirectory { get; }
     private string SettingsPath => Path.Combine(RootDirectory, "settings.json");
     private string PresetsPath => Path.Combine(RootDirectory, "user-presets.json");
@@ -24,45 +27,75 @@ public sealed class AppDataStore
         RootDirectory = rootDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "AudioTunePro");
-        Directory.CreateDirectory(RootDirectory);
+        try { Directory.CreateDirectory(RootDirectory); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Read-only profile: loads fall back to defaults and saves report failure instead of crashing.
+        }
     }
 
     public AppSettings LoadSettings()
     {
-        if (!File.Exists(SettingsPath)) return new AppSettings();
+        if (!File.Exists(SettingsPath) || IsTooLarge(SettingsPath)) return new AppSettings();
         try
         {
             var json = File.ReadAllText(SettingsPath);
             return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
         }
-        catch (Exception ex) when (ex is IOException or JsonException)
+        catch (Exception ex) when (IsStoreError(ex))
         {
             return new AppSettings();
         }
     }
 
-    public void SaveSettings(AppSettings settings)
-    {
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
-    }
+    /// <summary>Saves settings; returns false (instead of throwing) if the disk is unavailable or read-only.</summary>
+    public bool SaveSettings(AppSettings settings) =>
+        WriteAtomic(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
 
     public List<Preset> LoadUserPresets()
     {
-        if (!File.Exists(PresetsPath)) return new List<Preset>();
+        if (!File.Exists(PresetsPath) || IsTooLarge(PresetsPath)) return new List<Preset>();
         try
         {
             var json = File.ReadAllText(PresetsPath);
             return JsonSerializer.Deserialize<List<Preset>>(json) ?? new List<Preset>();
         }
-        catch (Exception ex) when (ex is IOException or JsonException)
+        catch (Exception ex) when (IsStoreError(ex))
         {
             return new List<Preset>();
         }
     }
 
-    public void SaveUserPresets(IEnumerable<Preset> presets)
+    /// <summary>Saves user presets; returns false (instead of throwing) if the disk is unavailable or read-only.</summary>
+    public bool SaveUserPresets(IEnumerable<Preset> presets)
     {
         var list = presets.Where(p => !p.IsBuiltIn).ToList();
-        File.WriteAllText(PresetsPath, JsonSerializer.Serialize(list, JsonOptions));
+        return WriteAtomic(PresetsPath, JsonSerializer.Serialize(list, JsonOptions));
+    }
+
+    private static bool IsTooLarge(string path)
+    {
+        try { return new FileInfo(path).Length > MaxFileBytes; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return true; }
+    }
+
+    private static bool IsStoreError(Exception ex) =>
+        ex is IOException or JsonException or UnauthorizedAccessException or NotSupportedException;
+
+    /// <summary>Write-then-replace, so a crash or power loss mid-write can't leave a truncated JSON file.</summary>
+    private bool WriteAtomic(string path, string contents)
+    {
+        try
+        {
+            Directory.CreateDirectory(RootDirectory);
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, contents);
+            File.Move(temp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 }

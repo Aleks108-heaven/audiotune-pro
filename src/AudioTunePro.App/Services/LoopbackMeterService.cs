@@ -15,11 +15,12 @@ public sealed class LoopbackMeterService : IDisposable
     private WasapiLoopbackCapture? _capture;
     private volatile bool _running;
 
-    public event Action<float>? LevelChanged; // 0.0 - 1.0 peak
+    public event Action<float>? LevelChanged; // linear peak, 1.0 = 0 dBFS (can exceed 1.0)
 
     public void Start()
     {
         if (_running) return;
+        Stop(); // release a capture that ended on its own (device removed) before creating a new one
         try
         {
             using var enumerator = new MMDeviceEnumerator();
@@ -51,7 +52,7 @@ public sealed class LoopbackMeterService : IDisposable
             if (abs > max) max = abs;
         }
 
-        LevelChanged?.Invoke(Math.Min(1f, max));
+        LevelChanged?.Invoke(Math.Min(4f, max)); // float mix can exceed 1.0 (over full scale); up to +12 dB
     }
 
     public void Stop()

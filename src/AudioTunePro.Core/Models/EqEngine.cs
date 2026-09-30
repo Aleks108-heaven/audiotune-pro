@@ -57,6 +57,69 @@ public sealed class EqEngine
         return copy;
     }
 
+    /// <summary>True when both engines would render to the same sound (band gains, tone, preamp, limiter, surround).</summary>
+    public bool IsEquivalentTo(EqEngine other)
+    {
+        if (Bands.Count != other.Bands.Count) return false;
+        for (int i = 0; i < Bands.Count; i++)
+        {
+            if (Bands[i].FrequencyHz != other.Bands[i].FrequencyHz ||
+                Math.Abs(Bands[i].GainDb - other.Bands[i].GainDb) > 0.001) return false;
+        }
+
+        return Math.Abs(BassDb - other.BassDb) <= 0.001 &&
+               Math.Abs(TrebleDb - other.TrebleDb) <= 0.001 &&
+               Math.Abs(PreampDb - other.PreampDb) <= 0.001 &&
+               EnableEqualizer == other.EnableEqualizer &&
+               Limiter.AutoGainProtection == other.Limiter.AutoGainProtection &&
+               Math.Abs(Limiter.CeilingDb - other.Limiter.CeilingDb) <= 0.001 &&
+               Surround.Mode == other.Surround.Mode &&
+               Math.Abs(Surround.Amount - other.Surround.Amount) <= 0.001 &&
+               string.Equals(Surround.HrtfFilePath ?? string.Empty, other.Surround.HrtfFilePath ?? string.Empty,
+                   StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Repairs a deserialized (possibly hand-edited or corrupt) engine: exactly the ten standard
+    /// bands, every value finite and inside its control's range. Returns a new engine.
+    /// </summary>
+    public EqEngine Sanitized()
+    {
+        static double Fix(double v, double min, double max, double fallback = 0) =>
+            double.IsFinite(v) ? Math.Clamp(v, min, max) : fallback;
+
+        var result = new EqEngine
+        {
+            BassDb = Fix(BassDb, -12, 12),
+            TrebleDb = Fix(TrebleDb, -12, 12),
+            PreampDb = Fix(PreampDb, -24, 12),
+            EnableEqualizer = EnableEqualizer,
+        };
+
+        for (int i = 0; i < result.Bands.Count; i++)
+        {
+            double gain = Bands is not null && i < Bands.Count ? Bands[i].GainDb : 0;
+            result.Bands[i].GainDb = Fix(gain, -12, 12);
+        }
+
+        var limiter = Limiter ?? new LimiterSettings();
+        result.Limiter = new LimiterSettings
+        {
+            AutoGainProtection = limiter.AutoGainProtection,
+            CeilingDb = Fix(limiter.CeilingDb, -6, 0, -0.3),
+        };
+
+        var surround = Surround ?? new SurroundSettings();
+        result.Surround = new SurroundSettings
+        {
+            Mode = Enum.IsDefined(surround.Mode) ? surround.Mode : SurroundMode.Auto,
+            Amount = Fix(surround.Amount, 0, 1, 0.5),
+            HrtfFilePath = SurroundSettings.IsSafeHrtfPath(surround.HrtfFilePath) ? surround.HrtfFilePath!.Trim() : null,
+        };
+
+        return result;
+    }
+
     public void Reset()
     {
         foreach (var b in Bands) b.GainDb = 0;

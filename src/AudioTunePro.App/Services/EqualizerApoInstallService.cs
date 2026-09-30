@@ -69,7 +69,10 @@ public sealed class EqualizerApoInstallService
 
         Directory.CreateDirectory(configDir);
         var includePath = Path.Combine(configDir, IncludeFileName);
-        File.WriteAllText(includePath, renderedConfig);
+        // Write-then-replace so Equalizer APO's hot-reload never reads a half-written file.
+        var tempPath = includePath + ".tmp";
+        File.WriteAllText(tempPath, renderedConfig);
+        File.Move(tempPath, includePath, overwrite: true);
 
         var mainConfigPath = Path.Combine(configDir, "config.txt");
         EnsureIncludeLine(mainConfigPath);

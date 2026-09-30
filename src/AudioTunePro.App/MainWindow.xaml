@@ -5,7 +5,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="AudioTune Pro — System-Wide Equalizer"
         Icon="pack://application:,,,/Assets/icon.ico"
-        Height="700" Width="1020" MinHeight="620" MinWidth="900"
+        Height="860" Width="1100" MinHeight="600" MinWidth="1000"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize"
@@ -17,13 +17,30 @@
         TextOptions.TextRenderingMode="ClearType"
         TextOptions.TextHintingMode="Fixed"
         Closing="Window_Closing"
-        StateChanged="Window_StateChanged">
+        StateChanged="Window_StateChanged"
+        IsVisibleChanged="Window_IsVisibleChanged"
+        Activated="Window_Activated">
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" />
     </shell:WindowChrome.WindowChrome>
 
-    <Grid>
+    <Window.Resources>
+        <!-- Fader dB readout: colored live by the band's SignalState (number and handle always agree);
+             text-disabled while the equalizer is bypassed. A style trigger beats a style setter, so the
+             disabled color wins without a local value. -->
+        <Style x:Key="fader-value" TargetType="TextBlock" BasedOn="{StaticResource value-sm}">
+            <Setter Property="Foreground"
+                    Value="{Binding BandState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource text-disabled}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -37,22 +54,26 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="14,0,0,0"
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="16,0,0,0"
                         VerticalAlignment="Center" IsHitTestVisible="False">
-                <TextBlock Text="&#xE9E9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
-                           Foreground="{StaticResource accent-teal}" VerticalAlignment="Center" />
+                <!-- Same four-bar mark as the app/tray icon, as a vector path (no icon font). -->
+                <Path Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"
+                      Fill="{StaticResource accent-teal}"
+                      Data="M0.4,14 V9 H2.6 V14 Z M4,14 V3.5 H6.2 V14 Z M7.6,14 V7 H9.8 V14 Z M11.2,14 V1.4 H13.4 V14 Z" />
                 <TextBlock Text="AudioTune Pro" Margin="8,0,0,0" FontFamily="{StaticResource font-sans}"
                            FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource text-primary}"
                            VerticalAlignment="Center" />
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <Button x:Name="MinimizeButton" Style="{StaticResource TitleBarButton}" Click="Minimize_Click">
+                <Button x:Name="MinimizeButton" Style="{StaticResource TitleBarButton}" Click="Minimize_Click"
+                        AutomationProperties.Name="Minimize" ToolTip="Minimize">
                     <Path Width="10" Height="10" Stretch="None"
                           Data="M0,5 L10,5"
                           Stroke="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                 </Button>
-                <Button x:Name="MaximizeButton" Style="{StaticResource TitleBarButton}" Click="Maximize_Click">
+                <Button x:Name="MaximizeButton" Style="{StaticResource TitleBarButton}" Click="Maximize_Click"
+                        AutomationProperties.Name="Maximize" ToolTip="Maximize">
                     <Grid Width="10" Height="10">
                         <Rectangle x:Name="MaximizeIcon" Width="9" Height="9"
                                    Stroke="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
@@ -61,7 +82,8 @@
                               Stroke="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Grid>
                 </Button>
-                <Button x:Name="CloseButton" Style="{StaticResource TitleBarCloseButton}" Click="Close_Click">
+                <Button x:Name="CloseButton" Style="{StaticResource TitleBarCloseButton}" Click="Close_Click"
+                        AutomationProperties.Name="Close to tray" ToolTip="Close to the system tray (use the tray icon's Exit to quit)">
                     <Path Width="10" Height="10" Stretch="None"
                           Data="M0,0 L10,10 M10,0 L0,10"
                           Stroke="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
@@ -71,7 +93,7 @@
             <Border Grid.ColumnSpan="2" VerticalAlignment="Bottom" Height="1" Background="{StaticResource divider}" />
         </Grid>
 
-        <Grid Grid.Row="1" Margin="24,20,24,24">
+        <Grid Grid.Row="1" Margin="24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -83,11 +105,11 @@
             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,4">
                 <TextBlock Text="AudioTune Pro" Style="{StaticResource wordmark}" />
                 <TextBlock Text="System-Wide Equalizer" Style="{StaticResource subtitle}"
-                           VerticalAlignment="Bottom" Margin="10,0,0,4" />
+                           VerticalAlignment="Bottom" Margin="8,0,0,4" />
             </StackPanel>
 
             <!-- APO status banner: unmet dependency only, never a routine confirmation. -->
-            <Border Grid.Row="1" Margin="0,10,0,16" Style="{StaticResource Banner}"
+            <Border Grid.Row="1" Margin="0,8,0,16" Style="{StaticResource Banner}"
                     Visibility="{Binding IsApoInstalled, Converter={x:Static vm:BoolToCollapsedConverter.Instance}}">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -95,9 +117,12 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xE7BA;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                               FontSize="16" Foreground="{StaticResource signal-warn}"
-                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <!-- Warning glyph: a plain geometric triangle in signal-warn (design-system Iconography). -->
+                    <Grid Grid.Column="0" Width="18" Height="17" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <Path Data="M9,0.5 L17.5,16.5 L0.5,16.5 Z" Fill="{StaticResource signal-warn}" Stretch="Uniform" />
+                        <Path Data="M9,6 V11 M9,13 V13.6" Stroke="{StaticResource ink-on-accent}" StrokeThickness="1.6"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                    </Grid>
                     <TextBlock Grid.Column="1" Style="{StaticResource body}" TextWrapping="Wrap" VerticalAlignment="Center"
                                Text="Equalizer APO not found. Install it once, then AudioTune Pro will control it automatically." />
                     <Button Grid.Column="2" Content="Get Equalizer APO" Style="{StaticResource AccentButton}"
@@ -108,168 +133,216 @@
             <!-- Main content -->
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="300" />
+                    <ColumnDefinition Width="360" />
                     <ColumnDefinition Width="32" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Left: presets + tone controls. Scrolls instead of clipping when the window
-                     is shorter than the content (e.g. restored/default size vs. maximized). -->
-                <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="0,0,10,0">
-                    <TextBlock Text="PRESET" Style="{StaticResource section-label}" Margin="0,0,0,8" />
-                    <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
-                              DisplayMemberPath="Name" Margin="0,0,0,4" />
-                    <TextBlock Text="{Binding SelectedPreset.Description}" Style="{StaticResource caption}"
-                               TextWrapping="Wrap" Margin="0,0,0,10" />
+                <!-- Left: the sidebar Panel. Scrolls instead of clipping when the window is shorter than
+                     the content. The master "Equalizer enabled" switch is first so it's never scrolled away. -->
+                <Border Grid.Column="0" Style="{StaticResource Panel}" Padding="16,16,8,16">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="0,0,8,0">
+                            <CheckBox Content="Equalizer enabled" IsChecked="{Binding EnableEqualizer}" Margin="0,0,0,12"
+                                      ToolTip="Bypasses the 10-band EQ, Bass, Treble and Preamp. 3D surround and volume are not affected." />
 
-                    <Grid Margin="0,0,0,20">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Name="NewPresetNameBox" Grid.Column="0" Margin="0,0,6,0"
-                                 Background="{StaticResource surface-raised}" Foreground="{StaticResource text-primary}"
-                                 FontFamily="{StaticResource font-sans}" FontSize="14"
-                                 BorderBrush="{StaticResource border-panel}" Padding="8,7" Text="My Preset" />
-                        <Button Grid.Column="1" Content="Save As" Style="{StaticResource AccentButton}" Click="SavePreset_Click" />
-                    </Grid>
+                            <!-- Preset: the grouped Panel variant (dropdown + name field + actions as one unit). -->
+                            <TextBlock Text="PRESET" Style="{StaticResource section-label}" Margin="0,0,0,8" />
+                            <Border Style="{StaticResource PanelGroup}" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                                              DisplayMemberPath="Name" AutomationProperties.Name="Preset" />
+                                    <TextBlock Text="{Binding SelectedPreset.Description}" TextWrapping="Wrap" Margin="0,8,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource caption}">
+                                                <Style.Triggers>
+                                                    <Trigger Property="Text" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="Edited since this preset was saved. Save As to keep your changes."
+                                               Style="{StaticResource caption}" Foreground="{StaticResource signal-warn}"
+                                               TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Visibility="{Binding IsModified, Converter={x:Static vm:BoolToVisibleConverter.Instance}}" />
 
-                    <TextBlock Text="VOLUME" Style="{StaticResource section-label}" Margin="0,0,0,8" />
-                    <Grid Margin="0,0,0,20">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="60" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="56" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="System" Style="{StaticResource control-label}" VerticalAlignment="Center" />
-                        <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="0" Maximum="100"
-                                Value="{Binding Volume}" />
-                        <TextBlock Grid.Column="2" Text="{Binding Volume, StringFormat={}{0:0}%}"
-                                   Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                    </Grid>
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="NewPresetNameBox" Grid.Column="0" Margin="0,0,8,0"
+                                                 MaxLength="60" Text="My Preset"
+                                                 AutomationProperties.Name="New preset name"
+                                                 KeyDown="NewPresetNameBox_KeyDown" />
+                                        <Button Grid.Column="1" Content="Save As" Style="{StaticResource AccentButton}"
+                                                Padding="16,6" Click="SavePreset_Click"
+                                                ToolTip="Save the current settings as a preset with this name" />
+                                    </Grid>
 
-                    <TextBlock Text="TONE" Style="{StaticResource section-label}" Margin="0,0,0,8" />
-                    <StackPanel IsEnabled="{Binding EnableEqualizer}">
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="60" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="56" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Bass" Style="{StaticResource control-label}" VerticalAlignment="Center" />
-                            <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-12" Maximum="12"
-                                    Value="{Binding BassDb}" />
-                            <TextBlock Grid.Column="2" Text="{Binding BassDb, StringFormat={}{0:+0.0;-0.0;0.0} dB}"
-                                       Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                        </Grid>
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="60" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="56" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Treble" Style="{StaticResource control-label}" VerticalAlignment="Center" />
-                            <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-12" Maximum="12"
-                                    Value="{Binding TrebleDb}" />
-                            <TextBlock Grid.Column="2" Text="{Binding TrebleDb, StringFormat={}{0:+0.0;-0.0;0.0} dB}"
-                                       Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                        </Grid>
-                        <Grid Margin="0,0,0,20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="60" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="56" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Preamp" Style="{StaticResource control-label}" VerticalAlignment="Center" />
-                            <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-24" Maximum="12"
-                                    Value="{Binding PreampDb}" />
-                            <TextBlock Grid.Column="2" Text="{Binding PreampDb, StringFormat={}{0:+0.0;-0.0;0.0} dB}"
-                                       Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                        </Grid>
-                    </StackPanel>
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Content="Delete Preset" Style="{StaticResource DestructiveButton}"
+                                                Padding="8,6" Margin="0,0,4,0" Click="DeletePreset_Click"
+                                                IsEnabled="{Binding CanDeleteSelectedPreset}"
+                                                ToolTip="Delete the selected preset (built-in presets can't be deleted)" />
+                                        <Button Grid.Column="1" Content="Reset" Padding="8,6" Margin="4,0,0,0" Click="Reset_Click"
+                                                ToolTip="Set every band, Bass, Treble and Preamp back to 0 dB" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
 
-                    <TextBlock Text="3D SURROUND" Style="{StaticResource section-label}" Margin="0,0,0,10" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <RadioButton GroupName="Surround" Content="Off" IsChecked="{Binding SurroundOff}" Margin="0,0,14,0" />
-                        <RadioButton GroupName="Surround" Content="Auto" IsChecked="{Binding SurroundAuto}" Margin="0,0,14,0" />
-                        <RadioButton GroupName="Surround" Content="Speakers" IsChecked="{Binding SurroundSpeakers}" Margin="0,0,14,0" />
-                        <RadioButton GroupName="Surround" Content="Headphones" IsChecked="{Binding SurroundHeadphones}" />
-                    </StackPanel>
-                    <TextBlock Text="{Binding SurroundStatus}" Style="{StaticResource caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
-                    <Grid Margin="0,0,0,6" IsEnabled="{Binding SurroundActive}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="60" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="56" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Amount" Style="{StaticResource control-label}" VerticalAlignment="Center" />
-                        <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="0" Maximum="1"
-                                Value="{Binding SurroundAmount}" />
-                        <TextBlock Grid.Column="2" Text="{Binding SurroundAmount, StringFormat={}{0:P0}}"
-                                   Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                    </Grid>
-                    <Grid Margin="0,0,0,20" Visibility="{Binding ShowHrtfRow, Converter={x:Static vm:BoolToVisibleConverter.Instance}}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="{Binding HrtfFileName}" Style="{StaticResource caption}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                   ToolTipService.ShowDuration="30000">
-                            <TextBlock.ToolTip>
-                                <TextBlock MaxWidth="320" TextWrapping="Wrap"
-                                           Text="Optional. Without a file, Headphones mode uses built-in crossfeed, which works well for most people. An HRTF file is a 2-channel binaural impulse-response WAV for personalized 3D positioning — it isn't bundled with AudioTune Pro. Free sets: HeSuVi's bundled HRIRs, or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
-                            </TextBlock.ToolTip>
-                        </TextBlock>
-                        <Button Grid.Column="1" Content="HRTF file…" Style="{StaticResource AccentButton}"
-                                Margin="8,0,0,0" Click="BrowseHrtf_Click"
-                                ToolTip="Pick a 2-channel HRTF/BRIR impulse-response .wav. None ships with the app — see HeSuVi or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
-                        <Button Grid.Column="2" Content="Clear" Margin="6,0,0,0" Click="ClearHrtf_Click"
-                                ToolTip="Remove the HRTF file and fall back to built-in crossfeed." />
-                    </Grid>
+                            <TextBlock Text="VOLUME" Style="{StaticResource section-label}" Margin="0,0,0,8" />
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="System" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="0" Maximum="100"
+                                        SmallChange="1" LargeChange="10" IsEnabled="{Binding HasOutputDevice}"
+                                        AutomationProperties.Name="System volume" Value="{Binding Volume}" />
+                                <TextBlock Grid.Column="2" Text="{Binding Volume, StringFormat={}{0:0}%}"
+                                           Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                            </Grid>
 
-                    <TextBlock Text="LIMITER — CLIPPING PROTECTION" Style="{StaticResource section-label}" Margin="0,0,0,10" />
-                    <CheckBox Content="Auto-gain protection" IsChecked="{Binding AutoGainProtection}" Margin="0,0,0,10" />
-                    <Grid Margin="0,0,0,4" IsEnabled="{Binding AutoGainProtection}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="60" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="56" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Ceiling" Style="{StaticResource control-label}" VerticalAlignment="Center" />
-                        <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-6" Maximum="0"
-                                Value="{Binding LimiterCeilingDb}" />
-                        <TextBlock Grid.Column="2" Text="{Binding LimiterCeilingDb, StringFormat={}{0:0.0} dB}"
-                                   Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                    </Grid>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,20">
-                        <TextBlock Style="{StaticResource caption}" VerticalAlignment="Center" Margin="0,0,10,0">
-                            <Run Text="Estimated peak: " />
-                            <Run Text="{Binding EstimatedPeakDb, StringFormat={}{0:0.0} dB, Mode=OneWay}"
-                                 FontFamily="{StaticResource font-mono}" Foreground="{StaticResource text-primary}" />
-                        </TextBlock>
-                        <!-- PeakIndicator: the same gain math as the faders, stated in words. -->
-                        <Border Style="{StaticResource PeakIndicatorBadge}"
-                                Background="{Binding PeakState, Converter={x:Static vm:SignalStateToTintBrushConverter.Instance}}">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="6" Height="6" VerticalAlignment="Center"
-                                         Fill="{Binding PeakState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}" />
-                                <TextBlock Margin="6,0,0,0" FontFamily="{StaticResource font-sans}" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{Binding PeakState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}"
-                                           Text="{Binding PeakState, Converter={x:Static vm:SignalStateToLabelConverter.Instance}}" />
+                            <TextBlock Text="TONE" Style="{StaticResource section-label}" Margin="0,0,0,8" />
+                            <StackPanel IsEnabled="{Binding EnableEqualizer}" Margin="0,0,0,16">
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="56" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Bass" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-12" Maximum="12"
+                                            AutomationProperties.Name="Bass" Value="{Binding BassDb}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding BassDb, StringFormat={}{0:+0.0;-0.0;0.0} dB}"
+                                               Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="56" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Treble" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-12" Maximum="12"
+                                            AutomationProperties.Name="Treble" Value="{Binding TrebleDb}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding TrebleDb, StringFormat={}{0:+0.0;-0.0;0.0} dB}"
+                                               Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="56" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Preamp" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-24" Maximum="12"
+                                            AutomationProperties.Name="Preamp" Value="{Binding PreampDb}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding PreampDb, StringFormat={}{0:+0.0;-0.0;0.0} dB}"
+                                               Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
                             </StackPanel>
-                        </Border>
-                    </StackPanel>
 
-                    <CheckBox Content="Equalizer enabled" IsChecked="{Binding EnableEqualizer}" Margin="0,0,0,10" />
-                    <CheckBox Content="Start with Windows" IsChecked="{Binding StartWithWindows}" Margin="0,0,0,10" />
-                    <CheckBox Content="Show level meter" IsChecked="{Binding ShowLevelMeter}" Margin="0,0,0,10" />
-                </StackPanel>
-                </ScrollViewer>
+                            <TextBlock Text="3D SURROUND" Style="{StaticResource section-label}" Margin="0,0,0,8" />
+                            <WrapPanel Margin="0,0,0,8">
+                                <RadioButton GroupName="Surround" Content="Off" IsChecked="{Binding SurroundOff}" Margin="0,0,12,4" />
+                                <RadioButton GroupName="Surround" Content="Auto" IsChecked="{Binding SurroundAuto}" Margin="0,0,12,4" />
+                                <RadioButton GroupName="Surround" Content="Speakers" IsChecked="{Binding SurroundSpeakers}" Margin="0,0,12,4" />
+                                <RadioButton GroupName="Surround" Content="Headphones" IsChecked="{Binding SurroundHeadphones}" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding SurroundStatus}" TextTrimming="CharacterEllipsis" ToolTip="{Binding SurroundStatus}" Margin="0,0,0,8">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource caption}">
+                                        <Style.Triggers>
+                                            <Trigger Property="Text" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <Grid Margin="0,0,0,0" IsEnabled="{Binding SurroundAmountEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Amount" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="0" Maximum="1"
+                                        SmallChange="0.05" LargeChange="0.1"
+                                        AutomationProperties.Name="Surround amount" Value="{Binding SurroundAmount}"
+                                        ToolTip="Strength of the widening or crossfeed. It has no effect while an HRTF file is loaded." />
+                                <TextBlock Grid.Column="2" Text="{Binding SurroundAmount, StringFormat={}{0:P0}}"
+                                           Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                            </Grid>
+                            <StackPanel Margin="0,12,0,0" Visibility="{Binding ShowHrtfRow, Converter={x:Static vm:BoolToVisibleConverter.Instance}}">
+                                <TextBlock Text="{Binding HrtfFileName}" Style="{StaticResource caption}"
+                                           TextTrimming="CharacterEllipsis" Margin="0,0,0,8"
+                                           ToolTipService.ShowDuration="30000">
+                                    <TextBlock.ToolTip>
+                                        <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                                                   Text="Optional. Without a file, Headphones mode uses built-in crossfeed, which works well for most people. An HRTF file is a 2-channel binaural impulse-response WAV for personalized 3D positioning — it isn't bundled with AudioTune Pro. Free sets: HeSuVi's bundled HRIRs, or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="HRTF file…" Padding="8,6" Margin="0,0,4,0" Click="BrowseHrtf_Click"
+                                            ToolTip="Pick a 2-channel HRTF/BRIR impulse-response .wav. None ships with the app — see HeSuVi or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
+                                    <Button Grid.Column="1" Content="Clear" Padding="8,6" Margin="4,0,0,0" Click="ClearHrtf_Click"
+                                            ToolTip="Remove the HRTF file and fall back to built-in crossfeed." />
+                                </Grid>
+                            </StackPanel>
+
+                            <TextBlock Text="LIMITER — CLIPPING PROTECTION" Style="{StaticResource section-label}" Margin="0,16,0,8" />
+                            <CheckBox Content="Auto-gain protection" IsChecked="{Binding AutoGainProtection}" Margin="0,0,0,12"
+                                      ToolTip="Automatically lowers the preamp so the EQ boost can't push the signal past the ceiling." />
+                            <Grid Margin="0,0,0,8" IsEnabled="{Binding AutoGainProtection}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Ceiling" Style="{StaticResource control-label}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="-6" Maximum="0"
+                                        SmallChange="0.5" LargeChange="1"
+                                        AutomationProperties.Name="Limiter ceiling" Value="{Binding LimiterCeilingDb}" />
+                                <TextBlock Grid.Column="2" Text="{Binding LimiterCeilingDb, StringFormat={}{0:+0.0;-0.0;0.0} dB}"
+                                           Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                            </Grid>
+
+                            <WrapPanel Margin="0,4,0,0">
+                                <TextBlock Style="{StaticResource caption}" VerticalAlignment="Center" Margin="0,0,12,4">
+                                    <Run Text="Estimated peak: " />
+                                    <Run Text="{Binding EstimatedPeakDb, StringFormat={}{0:+0.0;-0.0;0.0} dB, Mode=OneWay}"
+                                         FontFamily="{StaticResource font-mono}" Foreground="{StaticResource text-primary}" />
+                                </TextBlock>
+                                <!-- PeakIndicator: the same gain math as the faders, stated in words. -->
+                                <Border Style="{StaticResource PeakIndicatorBadge}" Margin="0,0,0,4"
+                                        Background="{Binding PeakState, Converter={x:Static vm:SignalStateToTintBrushConverter.Instance}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                 Fill="{Binding PeakState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}" />
+                                        <TextBlock Margin="8,0,0,0" FontFamily="{StaticResource font-sans}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{Binding PeakState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}"
+                                                   Text="{Binding PeakState, Converter={x:Static vm:SignalStateToLabelConverter.Instance}}" />
+                                    </StackPanel>
+                                </Border>
+                            </WrapPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
 
                 <!-- Right: graphic EQ -->
                 <Border Grid.Column="2" Style="{StaticResource Panel}" Padding="20">
@@ -280,66 +353,126 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="10-BAND GRAPHIC EQ" Style="{StaticResource section-label}" Margin="0,0,0,4" />
+                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                            <TextBlock Text="10-BAND GRAPHIC EQ" Style="{StaticResource section-label}" VerticalAlignment="Center" />
+                            <TextBlock Text="Double-click a fader to reset it to 0 dB" Style="{StaticResource caption}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </Grid>
 
-                        <ItemsControl Grid.Row="1" ItemsSource="{Binding Bands}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Rows="1" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="4,0">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Text="{Binding GainDb, StringFormat={}{0:+0.0;-0.0;0.0}}"
-                                                   Style="{StaticResource value-sm}"
-                                                   Foreground="{Binding BandState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}"
-                                                   HorizontalAlignment="Center" Margin="0,0,0,6" />
-                                        <Slider Grid.Row="1" Style="{StaticResource EqFaderSlider}" Value="{Binding GainDb}"
-                                                Background="{Binding BandState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}"
-                                                HorizontalAlignment="Center" />
-                                        <TextBlock Grid.Row="2" Text="{Binding Label}" Style="{StaticResource freq-label}"
-                                                   HorizontalAlignment="Center" Margin="0,8,0,0" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,16,0,0">
-                            <TextBlock Text="OUTPUT LEVEL" Style="{StaticResource section-label}" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <Border Width="240" Height="6" Background="{StaticResource track-fill}"
+                            <!-- dB scale: same three-row structure as a band column so +12 / 0 / -12 line up with the fader travel. -->
+                            <Grid Grid.Column="0" Margin="0,0,4,0" IsEnabled="{Binding EnableEqualizer}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="+12.0" Style="{StaticResource value-sm}" Visibility="Hidden" Margin="0,0,0,8" />
+                                <Grid Grid.Row="1">
+                                    <TextBlock Text="+12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" VerticalAlignment="Top" />
+                                    <TextBlock Text="0" Style="{StaticResource freq-label}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    <TextBlock Text="−12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                                </Grid>
+                                <TextBlock Grid.Row="2" Text="dB" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,8,0,0" />
+                            </Grid>
+
+                            <ItemsControl Grid.Column="1" ItemsSource="{Binding Bands}" IsEnabled="{Binding EnableEqualizer}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Rows="1" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="4,0">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="{Binding GainDb, StringFormat={}{0:+0.0;-0.0;0.0}}"
+                                                       Style="{StaticResource fader-value}"
+                                                       HorizontalAlignment="Center" Margin="0,0,0,8" />
+                                            <Slider Grid.Row="1" Style="{StaticResource EqFaderSlider}" Value="{Binding GainDb}"
+                                                    Background="{Binding BandState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}"
+                                                    AutomationProperties.Name="{Binding AccessibleName}"
+                                                    ToolTip="Double-click to reset to 0 dB"
+                                                    PreviewMouseLeftButtonDown="Fader_PreviewMouseLeftButtonDown"
+                                                    HorizontalAlignment="Center" />
+                                            <TextBlock Grid.Row="2" Text="{Binding Label}" Style="{StaticResource freq-label}"
+                                                       HorizontalAlignment="Center" Margin="0,8,0,0" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+
+                        <!-- LevelMeter: full-width, hidden entirely when "Show level meter" is off. The gradient
+                             spans the whole track and is revealed from the left by the level (-18..+6 dBFS), so color
+                             tracks the level itself: teal to -14, amber -10..-4, red from 0 up to the +6 over-range zone. -->
+                        <StackPanel Grid.Row="2" Margin="0,16,0,0"
+                                    Visibility="{Binding ShowLevelMeter, Converter={x:Static vm:BoolToVisibleConverter.Instance}}"
+                                    ToolTip="Peak level of the system output mix (before the equalizer), -18 to +6 dBFS"
+                                    AutomationProperties.Name="Output level">
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="OUTPUT LEVEL" Style="{StaticResource section-label}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding LevelText}" Style="{StaticResource value-sm}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Border Height="10" Background="{StaticResource track-fill}"
                                     CornerRadius="{StaticResource radius-full}" ClipToBounds="True">
-                                <Border Background="{StaticResource level-meter-gradient}" HorizontalAlignment="Left"
-                                        CornerRadius="{StaticResource radius-full}">
-                                    <Border.RenderTransform>
-                                        <ScaleTransform ScaleX="{Binding LevelMeter}" />
-                                    </Border.RenderTransform>
-                                    <Border.RenderTransformOrigin>
-                                        <Point X="0" Y="0.5" />
-                                    </Border.RenderTransformOrigin>
-                                    <Border Width="240" Height="6" />
-                                </Border>
+                                <Grid>
+                                    <Rectangle Fill="{StaticResource level-meter-gradient}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{Binding LevelMeter, Converter={x:Static vm:LevelToGridLengthConverter.Instance}, ConverterParameter=fill}" />
+                                            <ColumnDefinition Width="{Binding LevelMeter, Converter={x:Static vm:LevelToGridLengthConverter.Instance}, ConverterParameter=rest}" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="1" Background="{StaticResource track-fill}" />
+                                    </Grid>
+                                </Grid>
                             </Border>
+                            <!-- dB scale: four equal 6 dB spans, -18..+6 dBFS; the last span (0..+6) is over-range headroom. -->
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Height="4" VerticalAlignment="Top" BorderThickness="0,0,1,0" BorderBrush="{StaticResource track-guide}" />
+                                <Border Grid.Column="1" Height="4" VerticalAlignment="Top" BorderThickness="0,0,1,0" BorderBrush="{StaticResource track-guide}" />
+                                <Border Grid.Column="2" Height="4" VerticalAlignment="Top" BorderThickness="0,0,1,0" BorderBrush="{StaticResource track-guide}" />
+                                <Border Grid.Column="3" Height="4" VerticalAlignment="Top" BorderThickness="0,0,1,0" BorderBrush="{StaticResource track-guide}" />
+                                <TextBlock Grid.Column="0" Text="−18" Style="{StaticResource freq-label}" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                                <TextBlock Grid.Column="0" Text="−12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                                <TextBlock Grid.Column="1" Text="−6" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                                <TextBlock Grid.Column="2" Text="0" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                                <TextBlock Grid.Column="3" Text="+6 dB" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                            </Grid>
                         </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
 
-            <!-- Footer -->
+            <!-- Footer: status on the left, the two app-level switches on the right. -->
             <Grid Grid.Row="3" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Style="{StaticResource caption}" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="Delete Preset" Style="{StaticResource DestructiveButton}" Margin="0,0,10,0" Click="DeletePreset_Click" />
-                <Button Grid.Column="2" Content="Reset" Click="Reset_Click" />
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Style="{StaticResource caption}"
+                           VerticalAlignment="Center" Margin="0,0,24,0"
+                           TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}"
+                           AutomationProperties.LiveSetting="Polite" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <CheckBox Content="Start with Windows" IsChecked="{Binding StartWithWindows}" Margin="0,0,24,0" />
+                    <CheckBox Content="Show level meter" IsChecked="{Binding ShowLevelMeter}" />
+                </StackPanel>
             </Grid>
         </Grid>
     </Grid>

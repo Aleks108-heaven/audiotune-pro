@@ -6,7 +6,8 @@ Reference notes per component, exported from the AudioTune Pro design system art
 
 The custom window chrome that replaces the native Windows title bar. Left side: a 14px monoline app glyph in `accent-teal` plus the app name set in 12px/600 `text-primary`; right side: minimize, maximize and close, each a 46px-wide hit target. Give the whole bar a 1px `divider` bottom border on `app-bg-top` so it reads as a strip of chrome, not part of the content below.
 
-- Icon and title never wrap or truncate with an ellipsis at the window's minimum width (360px) -- shorten the subtitle before the wordmark.
+- Icon and title never wrap or truncate with an ellipsis at the window's minimum width -- shorten the subtitle before the wordmark. (The desktop app's minimum is 980px wide, so the EQ's ten +12.0 readouts fit; 360px only applies to the design-system web previews.)
+- Caption buttons behave like the native ones: not tab stops (`Focusable=False`); keyboard equivalents are Win+Up/Down and Alt+F4. Every other control shows the focus ring.
 - Minimize and maximize hover to `surface-panel` with `text-primary`; close is the one destructive control in the bar and hovers to a filled `signal-danger` with `ink-on-accent` glyph -- no other title-bar button ever takes a signal color.
 - Do not add extra icons, a search field or a menu bar here; the title bar is chrome only.
 
@@ -20,9 +21,9 @@ The bordered surface every group of controls sits on. `surface-panel` fill, 1px 
 
 ## Button
 
-Every clickable action in AudioTune Pro, in three weights. Use exactly one primary button per panel -- it is the only button filled with `accent-teal` and `ink-on-accent` text (Save As). Secondary buttons (Get Equalizer APO, Reset) fill with `surface-raised`, a `border-panel` border and `text-primary` label; they carry every action that is not the panel's one primary commitment.
+Every clickable action in AudioTune Pro, in three weights. Use exactly one primary button per panel -- it is the only button filled with `accent-teal` and `ink-on-accent` text (Save As; the Banner's Get Equalizer APO is the primary of its own panel). Secondary buttons (Get Equalizer APO, Reset) fill with `surface-raised`, a `border-panel` border and `text-primary` label; they carry every action that is not the panel's one primary commitment.
 
-- Delete Preset is a secondary button at rest -- it does not sit in a permanently red "danger" state -- and only takes `signal-danger` on hover/focus, since a destructive action should announce itself at the moment of intent, not sit alarming at rest.
+- Delete Preset is a secondary button at rest -- it does not sit in a permanently red "danger" state -- and only takes `signal-danger` on hover or keyboard focus, and is disabled for built-in presets, since a destructive action should announce itself at the moment of intent, not sit alarming at rest.
 - Disabled buttons drop straight to `text-disabled` on `surface-raised`; never simulate disabled with opacity.
 - `radius-md` corners, `button-label` type, `space-5` horizontal padding. Buttons never wrap their label to a second line -- shorten the label instead.
 
@@ -32,7 +33,8 @@ A binary switch for feature rows in the sidebar (Equalizer enabled, Start with W
 
 - Label color follows state: `text-primary` when the row is on or otherwise active, `text-secondary` when off but available, `text-disabled` when the row itself is unavailable (e.g. this toggle depends on a feature that isn't installed).
 - Track is `radius-full`; knob is a plain filled circle, 2px inset from the track edge, no shadow.
-- Always pair the toggle with its label to its left -- never a bare switch with no adjacent text.
+- Always pair the toggle with its label to its left, switch at the right edge of the row -- never a bare switch with no adjacent text.
+- The off track carries a 1px `track-guide` outline so the switch reaches 3:1 against the panel; the on track is fully `toggle-track-on`.
 
 ## Slider
 
@@ -49,6 +51,8 @@ One band of the 10-band graphic EQ: a thin vertical track, a filled handle with 
 
 - Track is a hairline 2px `track-fill` rule running the full height of the EQ panel, so ten bands read as one coherent grid, not ten separate widgets.
 - The handle is a short filled rounded bar (`radius-sm`), not a circle -- a circle reads as a knob, not a fader cap. A soft blurred glow in the same color sits behind it to suggest energy, at low opacity so it never competes with neighboring bands.
+- The rail and a 0 dB tick are `track-guide` (visible, not `track-fill`), with a +12 / 0 / -12 dB scale at the left of the row. Double-click a fader to reset it to 0 dB. While the equalizer is bypassed the faders drop to `accent-muted` with `text-disabled` values and no glow.
+- State = the band's boost measured against the limiter's boost budget (`SignalStateCalculator.BoostLimitDb`): 0 dB is always safe; warn within 3 dB and danger within 1 dB of the budget. With Auto-gain on the budget is 12 dB plus the (negative) ceiling; with it off it is a fixed 6 dB.
 - Never rely on color alone to signal risk: the dB value is always visible above the handle, and the Limiter section's `PeakIndicator` gives the same information as text for a band at risk.
 - Frequency labels are fixed and never move with the handle; they sit in a single row along the bottom of the EQ panel (31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k).
 
@@ -56,7 +60,7 @@ One band of the 10-band graphic EQ: a thin vertical track, a filled handle with 
 
 The horizontal output-level meter beneath the EQ panel. The fill is a single gradient across the whole track -- `signal-safe` through most of its length, `signal-warn` near the top, `signal-danger` at the very end -- so the same three-color gain language used on the faders reads continuously across the full output range, rather than as a flat single-color bar.
 
-- Track is `track-fill` at 6px tall, `radius-full`-style rounded ends.
+- Track is `track-fill` at 6px tall, `radius-full`-style rounded ends. The meter spans the full width of the EQ panel (10px tall) and reveals one fixed gradient from the left: teal only to -14 dBFS, amber from -10 to -4, red from 0 up. The scale is -18..+6 dBFS: the last 6 dB (0 to +6) is over-range headroom that only lights when the mix goes over full scale. Instant attack, ~1.1 s fall, a mono numeric readout (e.g. -3.0 dB) at the right of the label, and ticks every 6 dB (-18, -12, -6, 0, +6) below. The whole meter is hidden when "Show level meter" is off.
 - The meter's current level is the fill's width, not a moving playhead; it should feel like a physical VU strip, not a progress bar.
 - Pair with the `section-label` "OUTPUT LEVEL" directly above it, left-aligned to the meter.
 

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using AudioTunePro.App.Services;
 using AudioTunePro.App.ViewModels;
@@ -12,17 +14,16 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private bool _isExiting;
-    private bool _isLoaded;
 
     public MainWindow()
     {
         InitializeComponent();
+        // Never open taller or wider than the screen work area (small laptops at high DPI).
+        var work = SystemParameters.WorkArea;
+        Height = Math.Min(Height, work.Height - 16);
+        Width = Math.Min(Width, work.Width - 16);
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
-        // WindowChrome (WindowStyle="None") can fire a spurious StateChanged(Minimized)
-        // during startup layout, before the window has ever been shown — ignore state
-        // changes until Loaded so that doesn't hide the window before the user sees it.
-        Loaded += (_, _) => _isLoaded = true;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -42,6 +43,10 @@ public partial class MainWindow : Window
         catch (EntryPointNotFoundException)
         {
             // Older Windows build without this DWM attribute — cosmetic only, safe to ignore.
+        }
+        catch (DllNotFoundException)
+        {
+            // Same: no DWM available, nothing to do.
         }
     }
 
@@ -64,11 +69,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SavePreset_Click(object sender, RoutedEventArgs e)
+    private void SavePreset_Click(object sender, RoutedEventArgs e) =>
+        _viewModel.SaveAsNewPreset(NewPresetNameBox.Text);
+
+    private void NewPresetNameBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        var name = NewPresetNameBox.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(name)) return;
-        _viewModel.SaveAsNewPreset(name);
+        if (e.Key != Key.Enter) return;
+        _viewModel.SaveAsNewPreset(NewPresetNameBox.Text);
+        e.Handled = true;
     }
 
     private void BrowseHrtf_Click(object sender, RoutedEventArgs e)
@@ -77,6 +85,7 @@ public partial class MainWindow : Window
         {
             Title = "Choose an HRTF / binaural impulse response",
             Filter = "WAV impulse response (*.wav)|*.wav",
+            CheckFileExists = true,
         };
         var hrtfDir = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AudioTunePro", "hrtf");
@@ -99,38 +108,55 @@ public partial class MainWindow : Window
 
     private void Reset_Click(object sender, RoutedEventArgs e) => _viewModel.ResetCurrentPreset();
 
+    /// <summary>Double-click on a fader snaps it back to 0 dB (the pro-audio convention).</summary>
+    private void Fader_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2 || sender is not Slider { DataContext: BandViewModel band }) return;
+        band.GainDb = 0;
+        e.Handled = true;
+    }
+
     // --- Custom TitleBar chrome (WindowStyle="None" gives up the native title bar entirely) ---
 
-    private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
         {
-            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            ToggleMaximize();
             return;
         }
 
-        if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed) DragMove();
+        if (e.LeftButton == MouseButtonState.Pressed) DragMove();
     }
+
+    private void ToggleMaximize() =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
-    private void Maximize_Click(object sender, RoutedEventArgs e) =>
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     private void Window_StateChanged(object? sender, EventArgs e)
     {
-        if (_isLoaded && WindowState == WindowState.Minimized)
-        {
-            Hide();
-            return;
-        }
-
         var maximized = WindowState == WindowState.Maximized;
         MaximizeIcon.Visibility = maximized ? Visibility.Collapsed : Visibility.Visible;
         RestoreIcon.Visibility = maximized ? Visibility.Visible : Visibility.Collapsed;
+        // A borderless WindowChrome window maximizes with its invisible resize frame hanging past the
+        // screen edges; pull the content back inside so nothing is clipped off-screen.
+        RootGrid.Margin = maximized ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
+        UpdateMeterActivity();
     }
+
+    private void Window_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateMeterActivity();
+
+    /// <summary>The level meter only needs to run while the window is on screen (not hidden to the tray or minimized).</summary>
+    private void UpdateMeterActivity() =>
+        _viewModel.SetWindowActive(IsVisible && WindowState != WindowState.Minimized);
+
+    /// <summary>Picks up an Equalizer APO install the user just finished, so the banner clears and the EQ is applied.</summary>
+    private void Window_Activated(object? sender, EventArgs e) => _viewModel.RefreshInstallStatus();
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
@@ -139,6 +165,9 @@ public partial class MainWindow : Window
         if (_isExiting) return;
         e.Cancel = true;
         Hide();
+
+        if (_viewModel.ConsumeTrayHint())
+            (System.Windows.Application.Current as App)?.ShowTrayHint();
     }
 
     internal void ForceClose()

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
+using AudioTunePro.Core.Models;
 using Application = System.Windows.Application;
 using Color = System.Windows.Media.Color;
 
