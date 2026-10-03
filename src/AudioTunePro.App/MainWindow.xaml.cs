@@ -18,8 +18,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        // Never open taller or wider than the screen work area (small laptops at high DPI).
+        // Never open taller or wider than the screen work area (small laptops at high DPI). The minimum
+        // size is clamped too: a MinHeight/MinWidth above the work area would override this and push the
+        // footer or edges off-screen. The sidebar scrolls and the faders shrink, so the smaller window works.
         var work = SystemParameters.WorkArea;
+        MinHeight = Math.Min(MinHeight, work.Height - 16);
+        MinWidth = Math.Min(MinWidth, work.Width - 16);
         Height = Math.Min(Height, work.Height - 16);
         Width = Math.Min(Width, work.Width - 16);
         _viewModel = new MainViewModel();
@@ -116,6 +120,14 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>Keyboard equivalent of the double-click reset: Delete sets the focused fader to 0 dB (Home/End jump to the extremes).</summary>
+    private void Fader_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != Key.Delete || sender is not Slider { DataContext: BandViewModel band }) return;
+        band.GainDb = 0;
+        e.Handled = true;
+    }
+
     // --- Custom TitleBar chrome (WindowStyle="None" gives up the native title bar entirely) ---
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -168,6 +180,13 @@ public partial class MainWindow : Window
 
         if (_viewModel.ConsumeTrayHint())
             (System.Windows.Application.Current as App)?.ShowTrayHint();
+    }
+
+    /// <summary>Lets the window close during logoff/shutdown instead of hiding to the tray.</summary>
+    internal void PrepareForSessionEnd()
+    {
+        _isExiting = true;
+        _viewModel.Dispose();
     }
 
     internal void ForceClose()

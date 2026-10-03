@@ -306,9 +306,9 @@
                             </StackPanel>
 
                             <TextBlock Text="LIMITER — CLIPPING PROTECTION" Style="{StaticResource section-label}" Margin="0,16,0,8" />
-                            <CheckBox Content="Auto-gain protection" IsChecked="{Binding AutoGainProtection}" Margin="0,0,0,12"
+                            <CheckBox Content="Auto-gain protection" IsChecked="{Binding AutoGainProtection}" Margin="0,0,0,8"
                                       ToolTip="Automatically lowers the preamp so the EQ boost can't push the signal past the ceiling." />
-                            <Grid Margin="0,0,0,8" IsEnabled="{Binding AutoGainProtection}">
+                            <Grid Margin="0,0,0,4" IsEnabled="{Binding AutoGainProtection}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="64" />
                                     <ColumnDefinition Width="*" />
@@ -322,14 +322,24 @@
                                            Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
                             </Grid>
 
-                            <WrapPanel Margin="0,4,0,0">
-                                <TextBlock Style="{StaticResource caption}" VerticalAlignment="Center" Margin="0,0,12,4">
+                            <!-- Peak readout left, PeakIndicator pinned right (never wraps out of view), then the
+                                 trim the limiter is actually applying on its own line. -->
+                            <Grid Margin="0,2,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource caption}" VerticalAlignment="Center">
                                     <Run Text="Estimated peak: " />
                                     <Run Text="{Binding EstimatedPeakDb, StringFormat={}{0:+0.0;-0.0;0.0} dB, Mode=OneWay}"
                                          FontFamily="{StaticResource font-mono}" Foreground="{StaticResource text-primary}" />
                                 </TextBlock>
                                 <!-- PeakIndicator: the same gain math as the faders, stated in words. -->
-                                <Border Style="{StaticResource PeakIndicatorBadge}" Margin="0,0,0,4"
+                                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource PeakIndicatorBadge}"
                                         Background="{Binding PeakState, Converter={x:Static vm:SignalStateToTintBrushConverter.Instance}}">
                                     <StackPanel Orientation="Horizontal">
                                         <Ellipse Width="8" Height="8" VerticalAlignment="Center"
@@ -339,7 +349,13 @@
                                                    Text="{Binding PeakState, Converter={x:Static vm:SignalStateToLabelConverter.Instance}}" />
                                     </StackPanel>
                                 </Border>
-                            </WrapPanel>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Style="{StaticResource caption}" Margin="0,4,0,0"
+                                           ToolTip="Level change the limiter applies on top of your preamp. A ceiling below 0 dB lowers the output even with a flat curve.">
+                                    <Run Text="Auto-gain trim: " />
+                                    <Run Text="{Binding AutoGainTrimDb, StringFormat={}{0:+0.0;-0.0;0.0} dB, Mode=OneWay}"
+                                         FontFamily="{StaticResource font-mono}" Foreground="{StaticResource text-primary}" />
+                                </TextBlock>
+                            </Grid>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
@@ -355,7 +371,7 @@
 
                         <Grid Grid.Row="0" Margin="0,0,0,8">
                             <TextBlock Text="10-BAND GRAPHIC EQ" Style="{StaticResource section-label}" VerticalAlignment="Center" />
-                            <TextBlock Text="Double-click a fader to reset it to 0 dB" Style="{StaticResource caption}"
+                            <TextBlock Text="Double-click or Delete resets a fader to 0 dB" Style="{StaticResource caption}"
                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
                         </Grid>
 
@@ -389,7 +405,7 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="4,0">
+                                        <Grid Margin="2,0">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="*" />
@@ -401,8 +417,10 @@
                                             <Slider Grid.Row="1" Style="{StaticResource EqFaderSlider}" Value="{Binding GainDb}"
                                                     Background="{Binding BandState, Converter={x:Static vm:SignalStateToBrushConverter.Instance}}"
                                                     AutomationProperties.Name="{Binding AccessibleName}"
-                                                    ToolTip="Double-click to reset to 0 dB"
+                                                    ToolTip="Double-click or press Delete to reset to 0 dB"
+                                                    AutomationProperties.AcceleratorKey="Delete"
                                                     PreviewMouseLeftButtonDown="Fader_PreviewMouseLeftButtonDown"
+                                                    PreviewKeyDown="Fader_PreviewKeyDown"
                                                     HorizontalAlignment="Center" />
                                             <TextBlock Grid.Row="2" Text="{Binding Label}" Style="{StaticResource freq-label}"
                                                        HorizontalAlignment="Center" Margin="0,8,0,0" />
