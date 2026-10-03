@@ -68,6 +68,18 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Windows is logging off or shutting down. The main window normally cancels Closing to hide to the
+    /// tray, which would make Windows report this app as blocking shutdown; let it close for real
+    /// (this also flushes any pending EQ change) and release the tray icon.
+    /// </summary>
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        base.OnSessionEnding(e);
+        _mainWindow?.PrepareForSessionEnd();
+        _trayIcon?.Dispose();
+    }
+
     /// <summary>One-time balloon so closing the window doesn't look like the app (and its EQ) quit.</summary>
     internal void ShowTrayHint() =>
         _trayIcon?.ShowBalloonTip(5000, "AudioTune Pro is still running",

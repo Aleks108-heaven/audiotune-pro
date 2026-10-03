@@ -15,12 +15,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private const int MaxPresetNameLength = 60;
     private const int MaxUserPresets = 500;
 
-    // Level meter: peak dBFS is mapped onto 0..1 over this range, and falls at a fixed rate
-    // (a "VU strip" ballistic: instant attack, ~1.1 s to fall across the full range).
-    private const double MeterFloorDb = -18.0;
-    private const double MeterCeilingDb = 6.0; // over-range headroom above full scale
-    private const float MeterFallPerTick = 0.03f;
-
     private readonly AppDataStore _store;
     private readonly EqualizerApoInstallService _apo;
     private readonly StartupRegistrationService _startup;
@@ -172,6 +166,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(AutoGainProtection));
         OnPropertyChanged(nameof(LimiterCeilingDb));
         OnPropertyChanged(nameof(EstimatedPeakDb));
+        OnPropertyChanged(nameof(AutoGainTrimDb));
         OnPropertyChanged(nameof(PeakState));
         OnPropertyChanged(nameof(IsModified));
         RaiseSurroundChanged();
@@ -358,6 +353,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public double EstimatedPeakDb => _engine.EnableEqualizer ? AutoGainLimiter.EstimatePeakBoostDb(_engine) : 0.0;
 
     /// <summary>
+    /// Level change (dB, ≤ 0) that auto-gain protection is actually applying right now. Shown beside
+    /// the estimated peak because a ceiling below 0 dB trims even a flat curve: the badge can read
+    /// Safe while the output is quieter, and the user should see why.
+    /// </summary>
+    public double AutoGainTrimDb => EqualizerApoConfigGenerator.TotalTrimDb(_engine.ResolveSurround(_output.Kind));
+
+    /// <summary>
     /// Drives the Limiter section's PeakIndicator badge, using the same boost-budget math as the
     /// faders. When auto-gain protection is off no trim is ever applied, so the budget is the fixed
     /// unprotected limit rather than the (then inert) ceiling.
@@ -374,24 +376,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>Numeric readout for the meter, e.g. "-12.4 dB" (the same reading the bar shows, with fall-off).</summary>
-    public string LevelText => _levelMeter <= 0f
-        ? "— dB"
-        : string.Create(System.Globalization.CultureInfo.InvariantCulture,
-            $"{_levelMeter * (MeterCeilingDb - MeterFloorDb) + MeterFloorDb:+0.0;-0.0;0.0} dB");
+    public string LevelText => LevelMeterMath.FormatText(_levelMeter);
 
     private void UpdateMeterLevel()
     {
         float peak = _pendingPeak;
         _pendingPeak = 0f;
 
-        float target = 0f;
-        if (peak > 0f)
-        {
-            double db = 20.0 * Math.Log10(peak);
-            target = (float)Math.Clamp((db - MeterFloorDb) / (MeterCeilingDb - MeterFloorDb), 0.0, 1.0);
-        }
-
-        float next = target >= _levelMeter ? target : Math.Max(target, _levelMeter - MeterFallPerTick);
+        float next = LevelMeterMath.Step(_levelMeter, LevelMeterMath.ToFill(peak));
         if (Math.Abs(next - _levelMeter) > 0.002f || (next == 0f && _levelMeter != 0f)) LevelMeter = next;
     }
 
@@ -440,6 +432,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnEqChanged()
     {
         OnPropertyChanged(nameof(EstimatedPeakDb));
+        OnPropertyChanged(nameof(AutoGainTrimDb));
         OnPropertyChanged(nameof(PeakState));
         OnPropertyChanged(nameof(IsModified));
         _applyDebounce.Stop();

@@ -1,4 +1,5 @@
 using System.IO;
+using AudioTunePro.Core.Services;
 using Microsoft.Win32;
 
 namespace AudioTunePro.App.Services;
@@ -10,7 +11,7 @@ namespace AudioTunePro.App.Services;
 /// </summary>
 public sealed class EqualizerApoInstallService
 {
-    private const string IncludeFileName = "AudioTunePro.txt";
+    private const string IncludeFileName = ApoConfigWriter.IncludeFileName;
     public const string DownloadUrl = "https://sourceforge.net/projects/equalizerapo/";
 
     public string? FindInstallDirectory()
@@ -67,36 +68,6 @@ public sealed class EqualizerApoInstallService
         var configDir = GetConfigDirectory()
             ?? throw new InvalidOperationException("Equalizer APO is not installed.");
 
-        Directory.CreateDirectory(configDir);
-        var includePath = Path.Combine(configDir, IncludeFileName);
-        // Write-then-replace so Equalizer APO's hot-reload never reads a half-written file.
-        var tempPath = includePath + ".tmp";
-        File.WriteAllText(tempPath, renderedConfig);
-        File.Move(tempPath, includePath, overwrite: true);
-
-        var mainConfigPath = Path.Combine(configDir, "config.txt");
-        EnsureIncludeLine(mainConfigPath);
-    }
-
-    private void EnsureIncludeLine(string mainConfigPath)
-    {
-        const string includeLine = "Include: " + IncludeFileName;
-
-        if (!File.Exists(mainConfigPath))
-        {
-            File.WriteAllText(mainConfigPath, includeLine + Environment.NewLine);
-            return;
-        }
-
-        var lines = File.ReadAllLines(mainConfigPath);
-        bool alreadyIncluded = lines.Any(l =>
-            l.Trim().Equals(includeLine, StringComparison.OrdinalIgnoreCase));
-
-        if (!alreadyIncluded)
-        {
-            File.AppendAllText(mainConfigPath,
-                Environment.NewLine + "# Added by AudioTune Pro:" +
-                Environment.NewLine + includeLine + Environment.NewLine);
-        }
+        ApoConfigWriter.Apply(configDir, renderedConfig);
     }
 }

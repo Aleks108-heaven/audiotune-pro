@@ -173,7 +173,12 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
   adjacent-band overlap) and automatically trims the master preamp so the
   result stays under your chosen ceiling. This is a static, pre-computed
   safeguard, not real-time dynamics processing — see `AutoGainLimiter.cs`
-  for the exact math.
+  for the exact math. The ceiling is headroom, not only a boost limiter: any
+  ceiling below 0 dB lowers the output even with a flat curve (the default
+  -0.3 dB is a small safety cushion). The Limiter section therefore shows
+  **Auto-gain trim**, the level change actually being applied (limiter plus
+  speaker-widening trim), which always matches the `Preamp:` line written to
+  Equalizer APO.
 - **Live output level meter** via WASAPI loopback capture (visual only —
   negligible CPU cost). Full-width bar on a -18..+6 dBFS scale (ticks every
   6 dB, live dB readout): teal only at the bottom, amber through the middle,
@@ -183,6 +188,11 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
 - **Compact, resizable layout**: the sidebar (master switch, presets, volume,
   tone, 3D surround, limiter) fits at the default window size and scrolls in
   smaller windows; "Start with Windows" and "Show level meter" live in the footer.
+  The window (including its minimum size) is clamped to the screen's work area,
+  so it is never opened taller or wider than the display.
+- **Keyboard-friendly faders**: each fader is a focusable slider with an
+  accessible name ("31 hertz band gain"); arrow keys nudge it, Home/End jump to
+  the extremes, and **Delete** (or a double-click) resets it to 0 dB.
 - **One instance only**: launching a second copy just brings the running one
   to the front, so two copies never fight over the Equalizer APO config.
 - **PeakIndicator badge**: a Safe / Approaching ceiling / Near clipping status
@@ -194,7 +204,9 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
   "edited since saved" note appears until you Save As.
 - **System tray**: closing the window keeps AudioTune Pro (and your EQ)
   running in the background (a one-time balloon says so); use the tray menu
-  to reopen or exit. Minimizing works normally.
+  to reopen or exit. Minimizing works normally. When Windows logs off or shuts
+  down, the app closes for real and first saves any edit still waiting on its
+  150 ms apply/save debounce.
 - **Start with Windows** toggle.
 
 ## Performance
@@ -258,6 +270,66 @@ applied via `SystemParameters.FocusVisualStyleKey`.
   by design, so keep untrusted software off the machine; the installer is
   unsigned until you add a code-signing certificate.
 
+## Quality review (QA and design)
+
+A review of the app against a QA verification checklist (functional, security,
+language/framework, dependencies, accessibility) and a design review against
+`design-system/`, followed by fixes and a live test. Evidence labels follow the
+checklist: **Confirmed** (reproduced), **Suspected** (from code reading only),
+**Not tested**.
+
+**Status: PARTIALLY VERIFIED (pass with findings).** No confirmed defects in the
+logic; some behaviours need a real machine or real Windows sessions.
+
+### What was verified
+
+- Release build: 0 warnings, 0 errors. Unit tests: **92 passing** (64 before the
+  review). No known-vulnerable NuGet packages, including transitive ones.
+- CI: actions pinned to commit hashes, `contents: read`, locked restore,
+  vulnerability audit step.
+- Live run of the built app, driven through Windows UI Automation (with
+  screenshots at the default and minimum window sizes):
+  - Delete on a focused fader resets it to 0 dB; other keys behave normally.
+  - Auto-gain trim readout: flat curve with a -6 dB ceiling reads -6.0 dB and the
+    file on disk says `Preamp: -6.00 dB`; with protection off it reads 0.0; with
+    Surround on Auto the speaker-widening trim is included and still matches the file.
+  - Closing the window hides to the tray and the process keeps running.
+  - Simulated session end (`WM_QUERYENDSESSION`/`WM_ENDSESSION` sent to the test
+    process only): the process exits, and an edit made just before exit is saved
+    (the original code lost it in 4 of 4 runs; the fixed code kept it in 4 of 4).
+
+### Fixed during the review
+
+| Area | Change |
+|---|---|
+| Logoff/shutdown | `App.OnSessionEnding` lets the main window close for real and flushes the pending save. The original suspicion that shutdown was *blocked* was **not reproduced**; the confirmed benefit is the flushed edit. |
+| Limiter transparency | New **Auto-gain trim** readout (`EqualizerApoConfigGenerator.TotalTrimDb`), because a ceiling below 0 dB quietly lowered a flat curve while the badge read Safe. |
+| Small screens | `MinWidth`/`MinHeight` are clamped to the work area too, and fader columns are tighter so "+12.0" fits at the minimum width. |
+| Keyboard access | Delete resets a focused fader (previously double-click only). |
+| Visual bug | Disabled sliders (Surround Amount; faders when the equalizer is bypassed) showed a bright white block; track buttons now have a transparent template. |
+| Layout | The new trim caption briefly pushed the PeakIndicator badge below the sidebar fold; the Limiter readout is now a two-row grid with the badge pinned right. |
+| Testability | Include-line and meter logic moved into `Core` (`ApoConfigWriter`, `LevelMeterMath`) with 28 new tests. |
+
+### Open items (not changed)
+
+- **Design system adherence:** teal is used as the default fill (faders, six
+  slider fills, radio dot, title-bar logo) rather than "one primary color per
+  view"; when the Equalizer APO banner shows there are two teal primary buttons;
+  the scale labels use a true minus (−12) while values use a hyphen (-12.0).
+- **Contrast (WCAG, computed from `tokens.json`):** text, danger, warn and teal
+  pass; `track-guide` is 3.2:1 on panels but 2.96:1 on raised surfaces;
+  `border-panel` against the panel is 1.2:1, so panel edges lean on a weak shadow.
+- **Accessibility:** the output-level meter has a name but exposes no value to
+  screen readers.
+- **Tests:** `MainViewModel` has no unit tests (it creates real services and
+  writes to AppData; it would need its services injected). CI runs only the
+  `Core` tests, not the WPF project.
+- **Not tested:** DPI scales other than the one used for the live run, screen
+  readers, the installer, whether the app can write to Equalizer APO's config
+  folder as a standard user on every install, whether the audio service can read
+  an HRTF file stored in a user folder, how Equalizer APO treats `#` inside a
+  path, and the "before the equalizer" claim for the level meter.
+
 ## Project layout
 
 ```
@@ -268,9 +340,11 @@ design-system/
   AudioTunePro.Tokens.xaml    Generated WPF ResourceDictionary, linked into the app.
 src/
   AudioTunePro.Core/        Platform-agnostic: EQ + surround model, Equalizer APO config
-                             generator, auto-gain limiter math, built-in presets.
-  AudioTunePro.Core.Tests/  xUnit tests: EQ/limiter/config math, signal states,
-                             persistence and security hardening.
+                             generator and include-file writer, auto-gain limiter math,
+                             level-meter math, built-in presets.
+  AudioTunePro.Core.Tests/  xUnit tests: EQ/limiter/config math, config.txt include
+                             handling, meter ballistics, signal states, persistence
+                             and security hardening.
   AudioTunePro.App/         WPF UI, Equalizer APO detection/install glue,
                              tray icon, WASAPI level meter, output-device detection
                              and volume, settings storage.

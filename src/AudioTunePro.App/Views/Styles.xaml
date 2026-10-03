@@ -512,6 +512,20 @@
         </Setter>
     </Style>
 
+    <!-- Invisible click-to-page area on a slider track. Without its own template WPF draws the OS button
+         chrome here, which turns into a bright block when the slider is disabled. -->
+    <Style x:Key="SliderTrackButton" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Background="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Vertical EQ fader slider. Handle color is bound per-instance to the band's live
          SignalState (see MainWindow.xaml) rather than fixed here, so it's a true function of gain.
          The rail and the 0 dB tick use track-guide so the travel range and unity point are visible.
@@ -535,10 +549,10 @@
                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <Track x:Name="PART_Track">
                             <Track.DecreaseRepeatButton>
-                                <RepeatButton Command="Slider.IncreaseLarge" Background="Transparent" BorderThickness="0" Focusable="False" />
+                                <RepeatButton Command="Slider.IncreaseLarge" Style="{StaticResource SliderTrackButton}" />
                             </Track.DecreaseRepeatButton>
                             <Track.IncreaseRepeatButton>
-                                <RepeatButton Command="Slider.DecreaseLarge" Background="Transparent" BorderThickness="0" Focusable="False" />
+                                <RepeatButton Command="Slider.DecreaseLarge" Style="{StaticResource SliderTrackButton}" />
                             </Track.IncreaseRepeatButton>
                             <Track.Thumb>
                                 <!-- Background carries the live signal color in from the Slider (set per-band in MainWindow.xaml). -->
@@ -599,7 +613,7 @@
                                 </RepeatButton>
                             </Track.DecreaseRepeatButton>
                             <Track.IncreaseRepeatButton>
-                                <RepeatButton Command="Slider.IncreaseLarge" Background="Transparent" BorderThickness="0" Focusable="False" />
+                                <RepeatButton Command="Slider.IncreaseLarge" Style="{StaticResource SliderTrackButton}" />
                             </Track.IncreaseRepeatButton>
                             <Track.Thumb>
                                 <Thumb x:Name="HandleThumb" Width="16" Height="16" Focusable="False">

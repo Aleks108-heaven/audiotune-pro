@@ -71,6 +71,18 @@ public static class EqualizerApoConfigGenerator
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Total preamp trim (dB, ≤ 0) that auto-gain protection adds on top of the user's preamp for a
+    /// surround-resolved engine, exactly as <see cref="Generate"/> writes it. Lets the UI show the
+    /// level change instead of hiding it (a ceiling below 0 dB trims even a flat curve).
+    /// </summary>
+    public static double TotalTrimDb(EqEngine engine)
+    {
+        if (!engine.Limiter.AutoGainProtection) return 0.0;
+        double surround = SurroundTrimDb(engine.Surround);
+        return engine.EnableEqualizer ? AutoGainLimiter.ComputeTrimDb(engine) + surround : surround;
+    }
+
     /// <summary>Speaker-widening side gain: 1.0 (no change) up to 1.8 at full amount.</summary>
     private static double WidenFactor(SurroundSettings s) => 1.0 + Math.Clamp(s.Amount, 0, 1) * 0.8;
 
