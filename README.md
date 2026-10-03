@@ -324,6 +324,22 @@ logic; some behaviours need a real machine or real Windows sessions.
 - **Tests:** `MainViewModel` has no unit tests (it creates real services and
   writes to AppData; it would need its services injected). CI runs only the
   `Core` tests, not the WPF project.
+- **Clipping with other Equalizer APO settings (observed on the test machine):**
+  the limiter only sees AudioTune Pro's own settings, not the rest of
+  `config.txt`. With an existing `Preamp: +2.7 dB` there plus AudioTune Pro's
+  +3.0 dB, bass/low-band boosts and Auto-gain protection off, the endpoint's
+  peak meter sat at 1.000 (full scale) while the pre-EQ mix peaked at 0.985,
+  i.e. no headroom. Keep Auto-gain protection on and check `config.txt` for
+  other preamp/gain lines. Whether the output was actually clipping (rather
+  than just at full scale) was not isolated, because other audio was playing.
+- **Level meter position:** a 3 kHz test tone read about 0 dB through the
+  loopback (expected about +6 dB if the EQ had been applied), which supports
+  the "pre-EQ" description above. One unexplained inconsistency remains: the
+  browser's own session meter read lower than the loopback mix.
+- **Possible app hangs:** Windows logged two "AudioTunePro.exe stopped
+  interacting with Windows" events on the test machine, from an earlier
+  installed build (before these changes). No dump was captured and they were
+  not reproduced across many launches of the current build; cause unknown.
 - **Not tested:** DPI scales other than the one used for the live run, screen
   readers, the installer, whether the app can write to Equalizer APO's config
   folder as a standard user on every install, whether the audio service can read
