@@ -52,12 +52,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _output.DeviceChanged += () => Post(() =>
         {
             RaiseSurroundChanged();
+            _volumeCache = null;
             OnPropertyChanged(nameof(Volume));
             OnPropertyChanged(nameof(HasOutputDevice));
             RestartMeter();
             OnEqChanged();
         });
-        _output.VolumeChanged += _ => Post(() => OnPropertyChanged(nameof(Volume)));
+        _output.VolumeChanged += _ => Post(OnSystemVolumeChanged);
 
         _applyDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _applyDebounce.Tick += (_, _) =>
@@ -246,8 +247,26 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Windows master volume for the current output, 0..100.</summary>
     public double Volume
     {
-        get => (_output.Volume ?? 0f) * 100.0;
-        set { _output.Volume = (float)(value / 100.0); OnPropertyChanged(); }
+        // Cached so the slider keeps the value being dragged: Windows echoes our own write back
+        // (rounded to the driver's step size), and re-reading it mid-drag made the thumb jitter.
+        get => _volumeCache ??= (_output.Volume ?? 0f) * 100.0;
+        set
+        {
+            _volumeCache = value;
+            _output.Volume = (float)(value / 100.0);
+            OnPropertyChanged();
+        }
+    }
+
+    private double? _volumeCache;
+
+    /// <summary>Re-syncs the slider from Windows, ignoring the echo of our own writes.</summary>
+    private void OnSystemVolumeChanged()
+    {
+        var actual = (_output.Volume ?? 0f) * 100.0;
+        if (_volumeCache is double shown && Math.Abs(actual - shown) < 1.0) return;
+        _volumeCache = actual;
+        OnPropertyChanged(nameof(Volume));
     }
 
     /// <summary>False when no playback device is available; the volume slider is disabled then.</summary>

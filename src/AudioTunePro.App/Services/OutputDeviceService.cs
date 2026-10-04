@@ -105,9 +105,11 @@ public sealed class OutputDeviceService : IDisposable
 
     private void Refresh()
     {
-        var (oldKind, oldName) = (Kind, DeviceName);
+        var (oldKind, oldName, oldId) = (Kind, DeviceName, _device?.ID);
         Attach();
-        if (Kind != oldKind || DeviceName != oldName) DeviceChanged?.Invoke();
+        // The endpoint ID matters too: after a driver reload the same-named device gets a new
+        // endpoint, and the UI must re-read its volume and re-enable the slider.
+        if (Kind != oldKind || DeviceName != oldName || _device?.ID != oldId) DeviceChanged?.Invoke();
     }
 
     public void Dispose()
