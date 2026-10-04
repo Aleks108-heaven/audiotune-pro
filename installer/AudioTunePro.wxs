@@ -18,7 +18,7 @@
 
   <Package Name="AudioTune Pro"
            Manufacturer="AudioTune Pro"
-           Version="1.2.0"
+           Version="1.2.1"
            UpgradeCode="27E9C73A-268E-4A6D-A174-91E7BED677BE"
            Language="1033"
            Scope="perMachine"
