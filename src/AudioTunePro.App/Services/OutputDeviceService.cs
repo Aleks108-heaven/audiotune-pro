@@ -1,4 +1,5 @@
 using AudioTunePro.Core.Models;
+using AudioTunePro.Core.Services;
 using NAudio.CoreAudioApi;
 
 namespace AudioTunePro.App.Services;
@@ -7,6 +8,8 @@ namespace AudioTunePro.App.Services;
 /// Watches the default playback device: classifies it as speakers or headphones (so 3D
 /// surround can pick its mode automatically) and exposes its master volume. Purely event
 /// driven — no polling, so it costs nothing while idle.
+/// Every member can block on the Windows audio service, so callers must use it from a background thread,
+/// never the UI thread (see MainViewModel).
 /// </summary>
 public sealed class OutputDeviceService : IDisposable
 {
@@ -43,18 +46,31 @@ public sealed class OutputDeviceService : IDisposable
     {
         get
         {
-            try { return _device?.AudioEndpointVolume.MasterVolumeLevelScalar; }
-            catch (Exception) { return null; }
+            try
+            {
+                lock (_enumerator) return _device?.AudioEndpointVolume.MasterVolumeLevelScalar;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Could not read the system volume", ex);
+                return null;
+            }
         }
         set
         {
             if (value is null) return;
             try
             {
-                if (_device is not null)
-                    _device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(value.Value, 0f, 1f);
+                lock (_enumerator)
+                {
+                    if (_device is not null)
+                        _device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(value.Value, 0f, 1f);
+                }
             }
-            catch (Exception) { /* device went away mid-drag */ }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Could not set the system volume (device went away?)", ex);
+            }
         }
     }
 
@@ -64,7 +80,8 @@ public sealed class OutputDeviceService : IDisposable
         {
             if (_device is not null)
             {
-                try { _device.AudioEndpointVolume.OnVolumeNotification -= OnVolume; } catch (Exception) { }
+                try { _device.AudioEndpointVolume.OnVolumeNotification -= OnVolume; }
+                catch (Exception ex) { AppLog.Warn("Could not detach from the previous output device", ex); }
                 _device.Dispose();
                 _device = null;
             }
@@ -76,9 +93,10 @@ public sealed class OutputDeviceService : IDisposable
                 Kind = Classify(_device);
                 _device.AudioEndpointVolume.OnVolumeNotification += OnVolume;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // No active render device.
+                AppLog.Info($"No usable output device: {ex.GetType().Name}: {ex.Message}");
                 DeviceName = string.Empty;
                 Kind = OutputKind.Speakers;
             }
@@ -95,7 +113,10 @@ public sealed class OutputDeviceService : IDisposable
                 formFactor is 3 or 5 or 6)
                 return OutputKind.Headphones;
         }
-        catch (Exception) { /* fall through to the name heuristic */ }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Could not read the output form factor; falling back to the device name", ex);
+        }
 
         var name = device.FriendlyName.ToLowerInvariant();
         return HeadphoneNameHints.Any(name.Contains) ? OutputKind.Headphones : OutputKind.Speakers;
@@ -115,7 +136,7 @@ public sealed class OutputDeviceService : IDisposable
     public void Dispose()
     {
         _notifications.Dispose();
-        _device?.Dispose();
+        lock (_enumerator) _device?.Dispose();
         _enumerator.Dispose();
     }
 }

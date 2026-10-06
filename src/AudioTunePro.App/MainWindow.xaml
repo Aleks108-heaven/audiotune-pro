@@ -328,6 +328,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -354,6 +355,21 @@
                                     <Run Text="Auto-gain trim: " />
                                     <Run Text="{Binding AutoGainTrimDb, StringFormat={}{0:+0.0;-0.0;0.0} dB, Mode=OneWay}"
                                          FontFamily="{StaticResource font-mono}" Foreground="{StaticResource text-primary}" />
+                                </TextBlock>
+                                <!-- Gain the user's own Equalizer APO config stacks on top of ours (and plugins it loads):
+                                     invisible to the limiter until it was scanned for, so it is stated here. Empty = hidden. -->
+                                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Text="{Binding ExternalConfigNote, Mode=OneWay}" AutomationProperties.LiveSetting="Polite">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource caption}">
+                                            <Setter Property="Foreground" Value="{StaticResource signal-warn}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="Text" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
                                 </TextBlock>
                             </Grid>
                         </StackPanel>
@@ -392,7 +408,7 @@
                                 <Grid Grid.Row="1">
                                     <TextBlock Text="+12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" VerticalAlignment="Top" />
                                     <TextBlock Text="0" Style="{StaticResource freq-label}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                    <TextBlock Text="−12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                                    <TextBlock Text="-12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
                                 </Grid>
                                 <TextBlock Grid.Row="2" Text="dB" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,8,0,0" />
                             </Grid>
@@ -435,11 +451,13 @@
                              tracks the level itself: teal to -14, amber -10..-4, red from 0 up to the +6 over-range zone. -->
                         <StackPanel Grid.Row="2" Margin="0,16,0,0"
                                     Visibility="{Binding ShowLevelMeter, Converter={x:Static vm:BoolToVisibleConverter.Instance}}"
-                                    ToolTip="Peak level of the system output mix (before the equalizer), -18 to +6 dBFS"
-                                    AutomationProperties.Name="Output level">
+                                    ToolTip="Peak level of the system mix as Windows sends it to Equalizer APO, i.e. before the equalizer: it does not show clipping the EQ itself adds. -18 to +6 dBFS">
                             <Grid Margin="0,0,0,8">
-                                <TextBlock Text="OUTPUT LEVEL" Style="{StaticResource section-label}" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding LevelText}" Style="{StaticResource value-sm}" HorizontalAlignment="Right" />
+                                <TextBlock Text="SYSTEM MIX (PRE-EQ)" Style="{StaticResource section-label}" VerticalAlignment="Center" />
+                                <!-- The readout is the element screen readers reach (a plain StackPanel has no automation peer),
+                                     so the meter's name rides on it as help text and its value is the text itself. -->
+                                <TextBlock Text="{Binding LevelText}" Style="{StaticResource value-sm}" HorizontalAlignment="Right"
+                                           AutomationProperties.HelpText="System mix peak level, before the equalizer" />
                             </Grid>
                             <Border Height="10" Background="{StaticResource track-fill}"
                                     CornerRadius="{StaticResource radius-full}" ClipToBounds="True">
@@ -466,9 +484,9 @@
                                 <Border Grid.Column="1" Height="4" VerticalAlignment="Top" BorderThickness="0,0,1,0" BorderBrush="{StaticResource track-guide}" />
                                 <Border Grid.Column="2" Height="4" VerticalAlignment="Top" BorderThickness="0,0,1,0" BorderBrush="{StaticResource track-guide}" />
                                 <Border Grid.Column="3" Height="4" VerticalAlignment="Top" BorderThickness="0,0,1,0" BorderBrush="{StaticResource track-guide}" />
-                                <TextBlock Grid.Column="0" Text="−18" Style="{StaticResource freq-label}" HorizontalAlignment="Left" Margin="0,6,0,0" />
-                                <TextBlock Grid.Column="0" Text="−12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
-                                <TextBlock Grid.Column="1" Text="−6" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                                <TextBlock Grid.Column="0" Text="-18" Style="{StaticResource freq-label}" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                                <TextBlock Grid.Column="0" Text="-12" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                                <TextBlock Grid.Column="1" Text="-6" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
                                 <TextBlock Grid.Column="2" Text="0" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
                                 <TextBlock Grid.Column="3" Text="+6 dB" Style="{StaticResource freq-label}" HorizontalAlignment="Right" Margin="0,6,0,0" />
                             </Grid>

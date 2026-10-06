@@ -1,13 +1,16 @@
+using AudioTunePro.Core.Services;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace AudioTunePro.App.Services;
 
 /// <summary>
-/// Cheap system-output level meter for the UI, using WASAPI loopback capture on
+/// Cheap system-mix level meter for the UI, using WASAPI loopback capture on
 /// the default render device. This is purely a visual aid (AudioTune Pro's actual
-/// EQ processing happens inside Equalizer APO's own audio graph, not here) — the
-/// capture buffer is large and callbacks are lightweight, so CPU cost is negligible.
+/// EQ processing happens inside Equalizer APO's own audio graph, not here, so the
+/// reading is the mix *before* the EQ) — the capture buffer is large and callbacks
+/// are lightweight, so CPU cost is negligible. Start/Stop can block on the audio
+/// service; call them from a background thread.
 /// </summary>
 #pragma warning disable CS0618 // WasapiLoopbackCapture is marked obsolete in favor of a newer builder API; still functional and simplest for a plain system-output meter.
 public sealed class LoopbackMeterService : IDisposable
@@ -31,9 +34,10 @@ public sealed class LoopbackMeterService : IDisposable
             _capture.StartRecording();
             _running = true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // No active render device, or loopback unavailable — meter simply stays idle.
+            AppLog.Warn("Level meter could not start", ex);
             _running = false;
         }
     }
@@ -58,7 +62,8 @@ public sealed class LoopbackMeterService : IDisposable
     public void Stop()
     {
         if (_capture is null) return;
-        try { _capture.StopRecording(); } catch { /* already stopped */ }
+        try { _capture.StopRecording(); }
+        catch (Exception ex) { AppLog.Info($"Level meter was already stopped ({ex.GetType().Name})."); }
         _capture.DataAvailable -= OnDataAvailable;
         _capture.Dispose();
         _capture = null;

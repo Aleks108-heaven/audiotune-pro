@@ -20,7 +20,12 @@ public static class AutoGainLimiter
     public const double AdjacentBandOverlap = 0.35;
     public const double ShelfOverlapWithBands = 0.5;
 
-    public static double EstimatePeakBoostDb(EqEngine engine)
+    /// <param name="engine">The state to estimate.</param>
+    /// <param name="externalGainDb">
+    /// Gain added by the rest of the user's Equalizer APO config (its own <c>Preamp:</c> lines), which stacks on
+    /// top of AudioTune Pro's preamp. Counting it keeps the limiter honest about the real total boost.
+    /// </param>
+    public static double EstimatePeakBoostDb(EqEngine engine, double externalGainDb = 0)
     {
         var gains = engine.Bands.Select(b => b.GainDb).ToArray();
         double worst = 0;
@@ -36,6 +41,7 @@ public static class AutoGainLimiter
         worst += Math.Max(0, engine.BassDb) * ShelfOverlapWithBands;
         worst += Math.Max(0, engine.TrebleDb) * ShelfOverlapWithBands;
         worst += engine.PreampDb;
+        worst += double.IsFinite(externalGainDb) ? externalGainDb : 0;
 
         return Math.Max(0, worst);
     }
@@ -45,11 +51,11 @@ public static class AutoGainLimiter
     /// preamp so the estimated peak never exceeds <see cref="LimiterSettings.CeilingDb"/>.
     /// Returns 0 when protection is disabled or no trim is needed.
     /// </summary>
-    public static double ComputeTrimDb(EqEngine engine)
+    public static double ComputeTrimDb(EqEngine engine, double externalGainDb = 0)
     {
         if (!engine.Limiter.AutoGainProtection) return 0;
 
-        double peak = EstimatePeakBoostDb(engine);
+        double peak = EstimatePeakBoostDb(engine, externalGainDb);
         double overshoot = peak - engine.Limiter.CeilingDb;
         return overshoot > 0 ? -overshoot : 0;
     }

@@ -58,11 +58,11 @@ One band of the 10-band graphic EQ: a thin vertical track, a filled handle with 
 
 ## LevelMeter
 
-The horizontal output-level meter beneath the EQ panel. The fill is a single gradient across the whole track -- `signal-safe` through most of its length, `signal-warn` near the top, `signal-danger` at the very end -- so the same three-color gain language used on the faders reads continuously across the full output range, rather than as a flat single-color bar.
+The horizontal system-mix level meter beneath the EQ panel. It measures the mix Windows sends to Equalizer APO, i.e. *before* the equalizer, so it never shows clipping the EQ adds -- the label says so ("PRE-EQ") and the Limiter section covers that risk. The fill is a single gradient across the whole track -- `signal-safe` through most of its length, `signal-warn` near the top, `signal-danger` at the very end -- so the same three-color gain language used on the faders reads continuously across the full output range, rather than as a flat single-color bar.
 
 - Track is `track-fill` at 6px tall, `radius-full`-style rounded ends. The meter spans the full width of the EQ panel (10px tall) and reveals one fixed gradient from the left: teal only to -14 dBFS, amber from -10 to -4, red from 0 up. The scale is -18..+6 dBFS: the last 6 dB (0 to +6) is over-range headroom that only lights when the mix goes over full scale. Instant attack, ~1.1 s fall, a mono numeric readout (e.g. -3.0 dB) at the right of the label, and ticks every 6 dB (-18, -12, -6, 0, +6) below. The whole meter is hidden when "Show level meter" is off.
 - The meter's current level is the fill's width, not a moving playhead; it should feel like a physical VU strip, not a progress bar.
-- Pair with the `section-label` "OUTPUT LEVEL" directly above it, left-aligned to the meter.
+- Pair with the `section-label` "SYSTEM MIX (PRE-EQ)" directly above it, left-aligned to the meter.
 
 ## Banner
 

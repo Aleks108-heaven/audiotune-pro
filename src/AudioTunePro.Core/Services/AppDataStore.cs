@@ -49,8 +49,16 @@ public sealed class AppDataStore
     }
 
     /// <summary>Saves settings; returns false (instead of throwing) if the disk is unavailable or read-only.</summary>
-    public bool SaveSettings(AppSettings settings) =>
-        WriteAtomic(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
+    public bool SaveSettings(AppSettings settings) => WriteSettings(SerializeSettings(settings));
+
+    /// <summary>
+    /// Step one of a save, cheap and in memory: take the snapshot on the thread that owns the settings object,
+    /// then hand the text to <see cref="WriteSettings"/> on a background thread.
+    /// </summary>
+    public string SerializeSettings(AppSettings settings) => JsonSerializer.Serialize(settings, JsonOptions);
+
+    /// <summary>Step two of a save: the disk write. Returns false (instead of throwing) if the disk is unavailable or read-only.</summary>
+    public bool WriteSettings(string json) => WriteAtomic(SettingsPath, json);
 
     public List<Preset> LoadUserPresets()
     {

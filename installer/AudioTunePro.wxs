@@ -9,16 +9,17 @@
   separate product, so uninstall the old per-user version first; this installer detects it and
   says so. Settings live in %AppData%\AudioTunePro and are kept.
 
-  Build: dotnet publish the App project into CI-artefact, then run
-    wix build installer/AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o CI-artefact/AudioTunePro-Setup.msi
-  from the repo root (see README.md).
+  Build: dotnet publish the App project into an EMPTY CI-artefact folder (everything in it is installed), then run
+    wix build installer/AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o release/AudioTunePro-Setup.msi
+  from the repo root (see README.md). The MSI goes to release/, not CI-artefact/, so a rebuild can never
+  pack the previous MSI or its .wixpdb inside the new one.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <Package Name="AudioTune Pro"
            Manufacturer="AudioTune Pro"
-           Version="1.2.1"
+           Version="1.2.2"
            UpgradeCode="27E9C73A-268E-4A6D-A174-91E7BED677BE"
            Language="1033"
            Scope="perMachine"

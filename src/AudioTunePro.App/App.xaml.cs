@@ -1,8 +1,11 @@
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
 using AudioTunePro.App.Assets;
+using AudioTunePro.Core.Services;
 using Application = System.Windows.Application;
 using MenuItem = System.Windows.Forms.ToolStripMenuItem;
 
@@ -24,6 +27,25 @@ public partial class App : Application
     {
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        // Everything that touches AudioTunePro.Core lives in StartApp, so a Core.dll that Windows refuses to load
+        // is caught here and explained, instead of ending the process with an unhandled exception.
+        try
+        {
+            StartApp(e);
+        }
+        catch (Exception ex)
+        {
+            StartupFailure.Report(ex);
+            _trayIcon?.Dispose();
+            Shutdown(1);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void StartApp(StartupEventArgs e)
+    {
+        InstallErrorHandling();
 
         // One instance only: two copies would fight over the same Equalizer APO config file.
         _singleInstance = new Mutex(true, @"Local\AudioTunePro.SingleInstance", out var isFirst);
@@ -66,6 +88,34 @@ public partial class App : Application
         {
             _mainWindow.Show();
         }
+    }
+
+    /// <summary>
+    /// Routes every kind of unhandled error to %AppData%\AudioTunePro\logs\app.log. Errors on the UI thread are
+    /// logged and the app keeps running (a tray hint tells the user); the other two are logged before Windows ends the process.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void InstallErrorHandling()
+    {
+        AppLog.Current = new AppLog(StartupFailure.LogDirectory);
+        AppLog.Info($"AudioTune Pro {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version} starting " +
+                    $"(.NET {Environment.Version}, {Environment.OSVersion.VersionString}).");
+
+        DispatcherUnhandledException += (_, args) =>
+        {
+            AppLog.Error("Unhandled exception on the UI thread", args.Exception);
+            _trayIcon?.ShowBalloonTip(5000, "AudioTune Pro hit an error",
+                "It kept running. Details are in the log under %AppData%\\AudioTunePro\\logs.",
+                System.Windows.Forms.ToolTipIcon.Warning);
+            args.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            AppLog.Error($"Unhandled exception (terminating={args.IsTerminating})", args.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            AppLog.Error("Unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
     }
 
     /// <summary>

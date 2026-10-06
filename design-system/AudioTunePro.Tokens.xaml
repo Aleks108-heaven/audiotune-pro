@@ -35,7 +35,7 @@
     <SolidColorBrush x:Key="toggle-track-off" Color="#2A2F3B" />
     <SolidColorBrush x:Key="toggle-track-on" Color="#4ECCC0" />
     <SolidColorBrush x:Key="focus-ring" Color="#4ECCC0" />
-    <SolidColorBrush x:Key="track-guide" Color="#5F6A80" />
+    <SolidColorBrush x:Key="track-guide" Color="#66718A" />
 
     <!-- LevelMeter: one continuous gradient across the whole track (components.md). The meter maps
          -18..+6 dBFS onto the track (see MainViewModel) and reveals this gradient from the left, so each

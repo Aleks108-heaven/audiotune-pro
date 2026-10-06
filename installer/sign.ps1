@@ -2,7 +2,7 @@
   Signs AudioTune Pro's own binaries and the MSI with an Authenticode code-signing certificate,
   so Windows SmartScreen shows a verified publisher instead of "unknown publisher".
 
-  Usage (from the repo root, after `dotnet publish ... -o CI-artefact` and `wix build ...`):
+  Usage (from the repo root, after `dotnet publish ... -o CI-artefact` and `wix build ... -o release/AudioTunePro-Setup.msi`):
     # certificate file
     ./installer/sign.ps1 -PfxPath C:\keys\audiotune.pfx -PfxPassword (Read-Host -AsSecureString)
     # or a certificate already in your Windows certificate store (e.g. a hardware token)
@@ -31,7 +31,7 @@ $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\si
 if (-not $signtool) { throw 'signtool.exe not found. Install the Windows SDK ("Windows SDK Signing Tools for Desktop Apps").' }
 
 $files = if ($Target -eq 'Msi') {
-    Get-ChildItem (Join-Path $root 'CI-artefact') -Filter 'AudioTunePro-Setup.msi'
+    Get-ChildItem (Join-Path $root 'release') -Filter 'AudioTunePro-Setup.msi'
 } else {
     # Only our own code; third-party DLLs (NAudio, ...) keep their publishers' signatures/unsigned state.
     Get-ChildItem (Join-Path $root 'CI-artefact') -Include 'AudioTunePro.exe', 'AudioTunePro.dll', 'AudioTunePro.Core.dll' -Recurse

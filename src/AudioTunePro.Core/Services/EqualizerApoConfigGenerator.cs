@@ -13,7 +13,9 @@ namespace AudioTunePro.Core.Services;
 /// </summary>
 public static class EqualizerApoConfigGenerator
 {
-    public static string Generate(EqEngine engine)
+    /// <param name="engine">The surround-resolved state to render.</param>
+    /// <param name="externalGainDb">Extra Preamp gain from the rest of config.txt (see <see cref="ExternalApoConfig"/>); the limiter counts it.</param>
+    public static string Generate(EqEngine engine, double externalGainDb = 0)
     {
         var sb = new StringBuilder();
         var culture = CultureInfo.InvariantCulture;
@@ -35,13 +37,16 @@ public static class EqualizerApoConfigGenerator
             return sb.ToString();
         }
 
-        double autoTrim = AutoGainLimiter.ComputeTrimDb(engine);
+        double autoTrim = AutoGainLimiter.ComputeTrimDb(engine, externalGainDb);
         double totalPreamp = engine.PreampDb + autoTrim + surroundTrim;
 
         if (autoTrim < -0.05)
         {
             sb.AppendLine(FormattableString.Invariant(
                 $"# Clipping protection trimmed preamp by {autoTrim:F1} dB to keep peaks under {engine.Limiter.CeilingDb:F1} dBFS."));
+            if (Math.Abs(externalGainDb) >= 0.05)
+                sb.AppendLine(FormattableString.Invariant(
+                    $"# (counts {externalGainDb:+0.0;-0.0} dB of Preamp from the rest of config.txt)"));
         }
 
         sb.AppendLine(FormattableString.Invariant($"Preamp: {totalPreamp:F2} dB"));
@@ -76,11 +81,11 @@ public static class EqualizerApoConfigGenerator
     /// surround-resolved engine, exactly as <see cref="Generate"/> writes it. Lets the UI show the
     /// level change instead of hiding it (a ceiling below 0 dB trims even a flat curve).
     /// </summary>
-    public static double TotalTrimDb(EqEngine engine)
+    public static double TotalTrimDb(EqEngine engine, double externalGainDb = 0)
     {
         if (!engine.Limiter.AutoGainProtection) return 0.0;
         double surround = SurroundTrimDb(engine.Surround);
-        return engine.EnableEqualizer ? AutoGainLimiter.ComputeTrimDb(engine) + surround : surround;
+        return engine.EnableEqualizer ? AutoGainLimiter.ComputeTrimDb(engine, externalGainDb) + surround : surround;
     }
 
     /// <summary>Speaker-widening side gain: 1.0 (no change) up to 1.8 at full amount.</summary>
