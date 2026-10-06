@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
@@ -10,18 +11,35 @@ using AudioTunePro.Core.Services;
 
 namespace AudioTunePro.App.ViewModels;
 
+/// <summary>
+/// UI state and commands. Threading rule: the UI thread never waits on the disk, the registry or the Windows
+/// audio service (any of them can stall for seconds, which Windows reports as "stopped interacting"). Config
+/// and settings writes, volume changes, the level meter and device discovery all run on background workers;
+/// results come back through <see cref="Post"/>.
+/// </summary>
 public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 {
     private const int MaxPresetNameLength = 60;
     private const int MaxUserPresets = 500;
 
+    /// <summary>Windows gives a closing session a few seconds; pending writes get this long to finish.</summary>
+    private static readonly TimeSpan ShutdownFlushBudget = TimeSpan.FromSeconds(3);
+
+    private enum MeterCommand { Stop, Start, Restart, Shutdown }
+
     private readonly AppDataStore _store;
     private readonly EqualizerApoInstallService _apo;
     private readonly StartupRegistrationService _startup;
     private readonly LoopbackMeterService _meter;
-    private readonly OutputDeviceService _output;
     private readonly DispatcherTimer _applyDebounce;
     private readonly DispatcherTimer _meterTimer;
+
+    private readonly LatestWinsWorker<EqEngine> _applyWorker;
+    private readonly LatestWinsWorker<string> _saveWorker;
+    private readonly LatestWinsWorker<float> _volumeWorker;
+    private readonly LatestWinsWorker<MeterCommand> _meterWorker;
+    private readonly ManualResetEventSlim _outputReady = new(false);
+    private volatile OutputDeviceService? _output;
 
     private EqEngine _engine;
     private AppSettings _settings;
@@ -29,10 +47,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _statusMessage = string.Empty;
     private float _levelMeter;
     private volatile float _pendingPeak;
-    private bool _apoInstalled;
+    private volatile bool _apoInstalled = true; // assumed until the first background check says otherwise
+    private volatile bool _applied;             // the first apply has completed
+    private volatile ExternalConfigInfo _external = ExternalConfigInfo.None;
+    private int _lastAppliedKind = -1;
+    private int _checking;
     private bool _windowActive; // set by MainWindow once it is actually visible
-    private bool _saveFailed;
-    private bool _disposed;
+    private volatile bool _saveFailed;
+    private volatile bool _disposed;
+    private bool _hasOutputDevice;
+    private double? _volumeCache;
 
     public ObservableCollection<BandViewModel> Bands { get; } = new();
     public ObservableCollection<Preset> Presets { get; } = new();
@@ -45,27 +69,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _meter = new LoopbackMeterService();
         _meter.LevelChanged += level => { if (level > _pendingPeak) _pendingPeak = level; };
 
+        _applyWorker = new LatestWinsWorker<EqEngine>(RunApply, "ApplyWorker");
+        _saveWorker = new LatestWinsWorker<string>(json => _saveFailed = !_store.WriteSettings(json), "SaveWorker");
+        _volumeWorker = new LatestWinsWorker<float>(WriteVolume, "VolumeWorker");
+        _meterWorker = new LatestWinsWorker<MeterCommand>(RunMeter, "MeterWorker");
+
         _meterTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(33) };
         _meterTimer.Tick += (_, _) => UpdateMeterLevel();
-
-        _output = new OutputDeviceService();
-        _output.DeviceChanged += () => Post(() =>
-        {
-            RaiseSurroundChanged();
-            _volumeCache = null;
-            OnPropertyChanged(nameof(Volume));
-            OnPropertyChanged(nameof(HasOutputDevice));
-            RestartMeter();
-            OnEqChanged();
-        });
-        _output.VolumeChanged += _ => Post(OnSystemVolumeChanged);
 
         _applyDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _applyDebounce.Tick += (_, _) =>
         {
             _applyDebounce.Stop();
             SaveSettingsNow();
-            ApplyToEqualizerApo();
+            RequestApply();
         };
 
         _settings = _store.LoadSettings();
@@ -79,14 +96,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _engine = _settings.LiveEngine?.Sanitized() ?? _selectedPreset.Engine.Clone();
         RebuildBandViewModels();
 
-        _apoInstalled = _apo.IsInstalled;
-
-        // Keep the launch-at-sign-in entry pointing at this exe (e.g. after an upgrade moved it).
+        // Keep the launch-at-sign-in entry pointing at a copy that exists (e.g. after an upgrade moved it).
         _settings.StartWithWindows = _startup.IsEnabled();
-        if (_settings.StartWithWindows) _startup.SetEnabled(true);
+        if (_settings.StartWithWindows) _startup.RepairIfStale();
 
-        // Make the audio match what the UI is showing.
-        ApplyToEqualizerApo();
+        StartOutputService();
+
+        // Make the audio match what the UI is showing (on the apply worker, after the output device is known).
+        RequestApply();
         UpdateMeterRunning();
     }
 
@@ -114,25 +131,106 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>Runs <paramref name="action"/> on the UI thread; a no-op once the view model or the app is gone.</summary>
     private void Post(Action action)
     {
         if (_disposed) return;
-        App.Current.Dispatcher.BeginInvoke(() => { if (!_disposed) action(); });
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => { if (!_disposed) action(); });
+    }
+
+    // --- Output device (speakers/headphones + volume), discovered off the UI thread ---
+
+    private OutputKind CurrentKind => _output?.Kind ?? OutputKind.Speakers;
+
+    private void StartOutputService()
+    {
+        Task.Run(() =>
+        {
+            OutputDeviceService? service = null;
+            try
+            {
+                service = new OutputDeviceService();
+                var created = service;
+                service.DeviceChanged += () => OnOutputDeviceChanged(created);
+                service.VolumeChanged += level => Post(() => OnSystemVolumeChanged(level * 100.0));
+
+                if (_disposed)
+                {
+                    service.Dispose();
+                    return;
+                }
+                _output = service;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("The output-device service could not start; assuming speakers", ex);
+            }
+            finally
+            {
+                _outputReady.Set();
+            }
+
+            if (service is not null && ReferenceEquals(_output, service)) OnOutputDeviceChanged(service);
+        });
+    }
+
+    /// <summary>Runs on a background thread: reads the device (COM), then updates the UI.</summary>
+    private void OnOutputDeviceChanged(OutputDeviceService service)
+    {
+        float? volume = service.Volume;
+        var kind = service.Kind;
+        Post(() =>
+        {
+            _hasOutputDevice = volume.HasValue;
+            _volumeCache = (volume ?? 0f) * 100.0;
+            RaiseSurroundChanged();
+            OnPropertyChanged(nameof(Volume));
+            OnPropertyChanged(nameof(HasOutputDevice));
+            OnPropertyChanged(nameof(AutoGainTrimDb));
+            RestartMeter();
+            // Only re-render when the resolved surround mode could differ from what was last written.
+            if (Volatile.Read(ref _lastAppliedKind) != (int)kind) OnEqChanged();
+        });
+    }
+
+    private void WriteVolume(float level)
+    {
+        if (_output is { } output) output.Volume = level;
     }
 
     // --- Equalizer APO install status ---
 
     public bool IsApoInstalled => _apoInstalled;
 
-    /// <summary>Re-checks for Equalizer APO (e.g. when the window is re-activated after the user installed it).</summary>
+    /// <summary>
+    /// Re-checks (in the background) for an Equalizer APO install the user just finished, and for edits to the
+    /// rest of config.txt that change how much gain is stacked on ours; re-applies if either changed.
+    /// </summary>
     public void RefreshInstallStatus()
     {
-        var installed = _apo.IsInstalled;
-        if (installed == _apoInstalled) return;
+        if (_disposed || !_applied || Interlocked.Exchange(ref _checking, 1) == 1) return;
 
-        _apoInstalled = installed;
-        OnPropertyChanged(nameof(IsApoInstalled));
-        if (installed) ApplyToEqualizerApo();
+        Task.Run(() =>
+        {
+            try
+            {
+                var installed = _apo.IsInstalled;
+                var external = installed ? _apo.ScanExternalConfig() : ExternalConfigInfo.None;
+                var known = _external;
+                if (installed != _apoInstalled ||
+                    Math.Abs(external.PreampDb - known.PreampDb) > 0.05 ||
+                    external.LoadsPlugins != known.LoadsPlugins)
+                    Post(RequestApply);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Checking the Equalizer APO setup failed", ex);
+            }
+            finally
+            {
+                Volatile.Write(ref _checking, 0);
+            }
+        });
     }
 
     // --- Preset selection ---
@@ -169,13 +267,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(EstimatedPeakDb));
         OnPropertyChanged(nameof(AutoGainTrimDb));
         OnPropertyChanged(nameof(PeakState));
+        OnPropertyChanged(nameof(ExternalConfigNote));
         OnPropertyChanged(nameof(IsModified));
         RaiseSurroundChanged();
 
         _settings.ActivePresetName = preset.Name;
         SaveSettingsNow();
 
-        if (applyImmediately) ApplyToEqualizerApo();
+        if (applyImmediately) RequestApply();
     }
 
     private void RebuildBandViewModels()
@@ -244,33 +343,32 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     // --- System volume (default playback device) ---
 
-    /// <summary>Windows master volume for the current output, 0..100.</summary>
+    /// <summary>
+    /// Windows master volume for the current output, 0..100. Never reads the device on the UI thread: the value
+    /// is cached, refreshed by the device-change and volume notifications, and writes go to a background worker.
+    /// Windows echoes our own write back (rounded to the driver's step size); ignoring the echo keeps the thumb steady mid-drag.
+    /// </summary>
     public double Volume
     {
-        // Cached so the slider keeps the value being dragged: Windows echoes our own write back
-        // (rounded to the driver's step size), and re-reading it mid-drag made the thumb jitter.
-        get => _volumeCache ??= (_output.Volume ?? 0f) * 100.0;
+        get => _volumeCache ?? 0;
         set
         {
             _volumeCache = value;
-            _output.Volume = (float)(value / 100.0);
+            _volumeWorker.Submit((float)(value / 100.0));
             OnPropertyChanged();
         }
     }
 
-    private double? _volumeCache;
-
     /// <summary>Re-syncs the slider from Windows, ignoring the echo of our own writes.</summary>
-    private void OnSystemVolumeChanged()
+    private void OnSystemVolumeChanged(double actual)
     {
-        var actual = (_output.Volume ?? 0f) * 100.0;
         if (_volumeCache is double shown && Math.Abs(actual - shown) < 1.0) return;
         _volumeCache = actual;
         OnPropertyChanged(nameof(Volume));
     }
 
     /// <summary>False when no playback device is available; the volume slider is disabled then.</summary>
-    public bool HasOutputDevice => _output.Volume.HasValue;
+    public bool HasOutputDevice => _hasOutputDevice;
 
     // --- 3D surround ---
 
@@ -282,14 +380,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>The mode actually in effect once Auto is resolved against the current output device.</summary>
     public SurroundMode EffectiveSurroundMode =>
-        _engine.ResolveSurround(_output.Kind).Surround.Mode;
+        _engine.ResolveSurround(CurrentKind).Surround.Mode;
 
-    public string SurroundStatus => _engine.Surround.Mode switch
+    public string SurroundStatus
     {
-        SurroundMode.Auto => $"Auto: {(_output.Kind == OutputKind.Headphones ? "headphones" : "speakers")} detected" +
-                             (string.IsNullOrEmpty(_output.DeviceName) ? "" : $" ({_output.DeviceName})"),
-        _ => string.Empty,
-    };
+        get
+        {
+            if (_engine.Surround.Mode != SurroundMode.Auto) return string.Empty;
+            var name = _output?.DeviceName;
+            return $"Auto: {(CurrentKind == OutputKind.Headphones ? "headphones" : "speakers")} detected" +
+                   (string.IsNullOrEmpty(name) ? "" : $" ({name})");
+        }
+    }
 
     public bool SurroundOff
     {
@@ -334,10 +436,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void SetHrtfFile(string? path)
     {
-        if (!string.IsNullOrWhiteSpace(path) && !SurroundSettings.IsSafeHrtfPath(path))
+        if (!string.IsNullOrWhiteSpace(path))
         {
-            StatusMessage = "That file can't be used. Choose a .wav file stored on this PC (not a network path).";
-            return;
+            if (!SurroundSettings.IsSafeHrtfPath(path))
+            {
+                StatusMessage = "That file can't be used. Choose a .wav file stored on this PC (not a network path).";
+                return;
+            }
+
+            // A small read of the file's header, only when the user picks a file.
+            if (!HrtfFileValidator.TryValidate(path, out var reason))
+            {
+                StatusMessage = $"That HRTF file can't be used: {reason}.";
+                return;
+            }
         }
 
         _engine.Surround.HrtfFilePath = string.IsNullOrWhiteSpace(path) ? null : path;
@@ -368,15 +480,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(HrtfFileName));
     }
 
-    /// <summary>Worst-case boost (dB) the curve can produce; 0 while the equalizer is bypassed.</summary>
-    public double EstimatedPeakDb => _engine.EnableEqualizer ? AutoGainLimiter.EstimatePeakBoostDb(_engine) : 0.0;
+    /// <summary>
+    /// Worst-case boost (dB) the curve can produce, including Preamp lines in the rest of config.txt;
+    /// 0 while the equalizer is bypassed.
+    /// </summary>
+    public double EstimatedPeakDb =>
+        _engine.EnableEqualizer ? AutoGainLimiter.EstimatePeakBoostDb(_engine, _external.PreampDb) : 0.0;
 
     /// <summary>
     /// Level change (dB, ≤ 0) that auto-gain protection is actually applying right now. Shown beside
     /// the estimated peak because a ceiling below 0 dB trims even a flat curve: the badge can read
     /// Safe while the output is quieter, and the user should see why.
     /// </summary>
-    public double AutoGainTrimDb => EqualizerApoConfigGenerator.TotalTrimDb(_engine.ResolveSurround(_output.Kind));
+    public double AutoGainTrimDb =>
+        EqualizerApoConfigGenerator.TotalTrimDb(_engine.ResolveSurround(CurrentKind), _external.PreampDb);
 
     /// <summary>
     /// Drives the Limiter section's PeakIndicator badge, using the same boost-budget math as the
@@ -385,9 +502,32 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     public SignalState PeakState => SignalStateCalculator.FromBoost(EstimatedPeakDb, BoostLimitDb);
 
+    /// <summary>
+    /// Tells the user about gain the rest of their Equalizer APO config stacks on top of ours (which AudioTune Pro
+    /// does not control) and about plugins it loads. Empty when there is nothing to say.
+    /// </summary>
+    public string ExternalConfigNote
+    {
+        get
+        {
+            var external = _external;
+            var parts = new List<string>();
+            if (Math.Abs(external.PreampDb) >= 0.05)
+            {
+                parts.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"config.txt adds its own Preamp of {external.PreampDb:+0.0;-0.0} dB") +
+                    (AutoGainProtection
+                        ? " (counted by the limiter)."
+                        : ". Auto-gain protection is off, so it is not compensated."));
+            }
+            if (external.LoadsPlugins) parts.Add("config.txt loads a VST plugin into the audio service.");
+            return string.Join(" ", parts);
+        }
+    }
+
     // --- Level meter ---
 
-    /// <summary>Output level as a 0..1 fill (peak dBFS mapped over -18..+6 dB), with VU-style fall-off.</summary>
+    /// <summary>Peak level of the system mix as a 0..1 fill (dBFS mapped over -18..+6 dB), with VU-style fall-off.</summary>
     public float LevelMeter
     {
         get => _levelMeter;
@@ -412,13 +552,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (MeterWanted)
         {
-            _meter.Start();
+            _meterWorker.Submit(MeterCommand.Start);
             _meterTimer.Start();
         }
         else
         {
             _meterTimer.Stop();
-            _meter.Stop();
+            _meterWorker.Submit(MeterCommand.Stop);
             _pendingPeak = 0f;
             if (_levelMeter != 0f) LevelMeter = 0f;
         }
@@ -426,9 +566,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void RestartMeter()
     {
-        if (!MeterWanted) return;
-        _meter.Stop();
-        _meter.Start();
+        if (MeterWanted) _meterWorker.Submit(MeterCommand.Restart);
+    }
+
+    /// <summary>Runs on the meter worker: starting or stopping WASAPI loopback capture can block on the audio service.</summary>
+    private void RunMeter(MeterCommand command)
+    {
+        switch (command)
+        {
+            case MeterCommand.Start: _meter.Start(); break;
+            case MeterCommand.Stop: _meter.Stop(); break;
+            case MeterCommand.Restart: _meter.Stop(); _meter.Start(); break;
+            case MeterCommand.Shutdown: _meter.Dispose(); break;
+        }
     }
 
     /// <summary>
@@ -453,6 +603,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(EstimatedPeakDb));
         OnPropertyChanged(nameof(AutoGainTrimDb));
         OnPropertyChanged(nameof(PeakState));
+        OnPropertyChanged(nameof(ExternalConfigNote));
         OnPropertyChanged(nameof(IsModified));
         _applyDebounce.Stop();
         _applyDebounce.Start();
@@ -462,29 +613,80 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void SaveSettingsNow()
     {
         _settings.LiveEngine = _engine.Clone();
-        _saveFailed = !_store.SaveSettings(_settings);
+        // Serialize here, where the settings object is owned; only the disk write happens on the worker.
+        _saveWorker.Submit(_store.SerializeSettings(_settings));
     }
 
-    private void ApplyToEqualizerApo()
+    /// <summary>Queues a render-and-write of the current EQ state; the newest request wins.</summary>
+    private void RequestApply() => _applyWorker.Submit(_engine.Clone());
+
+    /// <summary>Runs on the apply worker: all the file and registry work for one apply.</summary>
+    private void RunApply(EqEngine engine)
     {
-        var saveNote = _saveFailed ? " Settings could not be saved to disk." : string.Empty;
+        _outputReady.Wait(TimeSpan.FromSeconds(3)); // surround Auto needs the device kind; don't wait forever for it
+        var kind = CurrentKind;
+        var installed = _apo.IsInstalled;
+        var external = ExternalConfigInfo.None;
+        string status;
 
-        if (!_apo.IsInstalled)
+        if (!installed)
         {
-            StatusMessage = "Equalizer APO not installed — your changes are kept but not applied yet." + saveNote;
-            return;
+            status = "Equalizer APO not installed — your changes are kept but not applied yet.";
+        }
+        else
+        {
+            try
+            {
+                var note = DropUnusableHrtf(engine);
+                external = _apo.ScanExternalConfig();
+                _apo.ApplyConfig(EqualizerApoConfigGenerator.Generate(engine.ResolveSurround(kind), external.PreampDb));
+                Volatile.Write(ref _lastAppliedKind, (int)kind);
+                status = $"Applied at {DateTime.Now:HH:mm:ss}." + note;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                AppLog.Warn("Could not write the Equalizer APO config", ex);
+                status = $"Could not write Equalizer APO config: {ex.Message}";
+            }
         }
 
-        try
+        Post(() => ApplyCompleted(installed, external, status));
+    }
+
+    /// <summary>
+    /// Re-checks the HRTF file at apply time (it may have been replaced since it was chosen) and leaves it out of
+    /// the config if it is no longer a small, well-formed WAV. Returns a note for the status line, or empty.
+    /// </summary>
+    private static string DropUnusableHrtf(EqEngine engine)
+    {
+        var path = engine.Surround.HrtfFilePath;
+        if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+        if (HrtfFileValidator.TryValidate(path, out var reason)) return string.Empty;
+
+        engine.Surround.HrtfFilePath = null;
+        return $" HRTF file ignored: {reason}.";
+    }
+
+    private void ApplyCompleted(bool installed, ExternalConfigInfo external, string status)
+    {
+        _applied = true;
+        if (installed != _apoInstalled)
         {
-            var rendered = EqualizerApoConfigGenerator.Generate(_engine.ResolveSurround(_output.Kind));
-            _apo.ApplyConfig(rendered);
-            StatusMessage = $"Applied at {DateTime.Now:HH:mm:ss}." + saveNote;
+            _apoInstalled = installed;
+            OnPropertyChanged(nameof(IsApoInstalled));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+
+        var changed = !Equals(external, _external);
+        _external = external;
+        if (changed)
         {
-            StatusMessage = $"Could not write Equalizer APO config: {ex.Message}" + saveNote;
+            OnPropertyChanged(nameof(ExternalConfigNote));
+            OnPropertyChanged(nameof(EstimatedPeakDb));
+            OnPropertyChanged(nameof(AutoGainTrimDb));
+            OnPropertyChanged(nameof(PeakState));
         }
+
+        StatusMessage = status + (_saveFailed ? " Settings could not be saved to disk." : string.Empty);
     }
 
     // --- Preset management ---
@@ -593,6 +795,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
+    /// <summary>
+    /// Flushes any pending edit to disk and to Equalizer APO, then stops the workers. Waits at most
+    /// <see cref="ShutdownFlushBudget"/>, so a stalled disk can't hold up Windows logoff.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -601,12 +807,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             _applyDebounce.Stop();
             SaveSettingsNow();
-            ApplyToEqualizerApo();
+            RequestApply();
         }
 
         _disposed = true;
         _meterTimer.Stop();
-        _meter.Dispose();
-        _output.Dispose();
+
+        var deadline = DateTime.UtcNow + ShutdownFlushBudget;
+        TimeSpan Remaining() => deadline > DateTime.UtcNow ? deadline - DateTime.UtcNow : TimeSpan.Zero;
+        if (!_saveWorker.Flush(Remaining()) | !_applyWorker.Flush(Remaining()))
+            AppLog.Warn("Shutdown: pending writes did not finish within the time budget.");
+
+        _applyWorker.Dispose();
+        _saveWorker.Dispose();
+        _volumeWorker.Dispose();
+        _meterWorker.Submit(MeterCommand.Shutdown);
+        _meterWorker.Dispose();
+
+        var output = _output;
+        if (output is not null) Task.Run(output.Dispose);
     }
 }

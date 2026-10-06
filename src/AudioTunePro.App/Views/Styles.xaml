@@ -294,11 +294,12 @@
         </Setter>
     </Style>
 
-    <!-- TextBox (preset name field): surface-raised input, radius-md, teal focus border. -->
+    <!-- TextBox (preset name field): surface-raised input, radius-md, teal focus border. The resting border is
+         track-guide (3:1 on the panel): an input's edge is what identifies it, so it can't be the faint panel border. -->
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{StaticResource surface-raised}" />
         <Setter Property="Foreground" Value="{StaticResource text-primary}" />
-        <Setter Property="BorderBrush" Value="{StaticResource border-panel}" />
+        <Setter Property="BorderBrush" Value="{StaticResource track-guide}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
         <Setter Property="FontSize" Value="14" />
@@ -319,7 +320,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource track-guide}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource text-secondary}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource focus-ring}" />
@@ -364,7 +365,7 @@
     <Style TargetType="ComboBox">
         <Setter Property="Background" Value="{StaticResource surface-raised}" />
         <Setter Property="Foreground" Value="{StaticResource text-primary}" />
-        <Setter Property="BorderBrush" Value="{StaticResource border-panel}" />
+        <Setter Property="BorderBrush" Value="{StaticResource track-guide}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="FontFamily" Value="{StaticResource font-sans}" />
         <Setter Property="FontSize" Value="14" />
@@ -398,7 +399,7 @@
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource track-guide}" />
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource text-secondary}" />
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>

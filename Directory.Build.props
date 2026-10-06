@@ -13,4 +13,16 @@
     <NuGetAuditLevel>low</NuGetAuditLevel>
   </PropertyGroup>
 
+  <!-- One version for every build, so Event Viewer, the app log and the installer all name the same release
+       (every build used to report 1.0.0.0). Keep installer/AudioTunePro.wxs's Package Version in step with it. -->
+  <PropertyGroup>
+    <Version>1.2.2</Version>
+  </PropertyGroup>
+
+  <!-- Release builds embed the debug symbols in the assembly: crash logs still show line numbers, and no loose
+       .pdb files end up in the installer. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
 </Project>

@@ -58,6 +58,15 @@ public sealed class EqualizerApoInstallService
         return configDir is null ? null : Path.Combine(configDir, IncludeFileName);
     }
 
+    /// <summary>Extra Preamp gain and plugin lines in the user's own config (see <see cref="ExternalApoConfig"/>).</summary>
+    public ExternalConfigInfo ScanExternalConfig()
+    {
+        var configDir = GetConfigDirectory();
+        return configDir is null
+            ? ExternalConfigInfo.None
+            : ExternalApoConfig.Scan(Path.Combine(configDir, "config.txt"));
+    }
+
     /// <summary>
     /// Writes the rendered EQ snippet to AudioTune Pro's own include file and makes
     /// sure config.txt references it exactly once. Equalizer APO watches config.txt

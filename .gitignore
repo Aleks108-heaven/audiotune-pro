@@ -10,3 +10,9 @@ CI-artefact/
 *.pfx
 *.p12
 *.snk
+
+# Installer output (MSI, checksums), built outside CI-artefact so it is never packed into itself.
+release/
+
+# Windows folder-settings file
+desktop.ini

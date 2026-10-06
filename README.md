@@ -67,6 +67,17 @@ present if you can build this repo). Add `--self-contained true` if you need
 to hand the folder to a machine without .NET installed (produces a much
 larger output).
 
+Run the command **from the repo root** (`MSB1009: Project file does not exist` means the terminal was in
+another folder), and publish into an empty `CI-artefact` (delete the old one first): the installer packs
+everything in that folder. Release builds embed their debug symbols, so there are no loose `.pdb` files.
+
+**Smart App Control / Application Control:** these Windows features refuse unsigned programs that have no
+reputation, and the decision can change from one run to the next. An unsigned build can therefore start
+fine on one launch and be blocked on another (also for `dotnet test` on a developer PC). The app now shows
+a message and writes `%AppData%\AudioTunePro\logs\startup-error.log` instead of vanishing, but the real fix
+is a signed release (see "Signed installer" below). Do not turn Smart App Control off to work around it: Windows
+cannot switch it back on without a reset. Run the tests in CI or on a machine where it is not enforcing.
+
 ### HRTF impulse response (optional)
 
 `tools/build_hrtf.py` builds a 4-channel "true stereo" impulse response
@@ -87,7 +98,7 @@ true-stereo IR (L→L, L→R, R→L, R→R).
 
 ### Installer
 
-`CI-artefact/AudioTunePro-Setup.msi` is a real installer, built with the
+`release/AudioTunePro-Setup.msi` is a real installer, built with the
 [WiX Toolset](https://wixtoolset.org/) v5 (free — v6+ requires accepting a
 paid maintenance-fee EULA, so this project intentionally pins v5). Running it
 installs AudioTune Pro to `C:\Program Files\AudioTune Pro` (per-machine; one
@@ -109,15 +120,22 @@ Your settings and presets are kept.
 Both shortcuts and the app itself use the equalizer-bars icon in
 `src/AudioTunePro.App/Assets/icon.ico`.
 
-To rebuild it after code changes (regenerate `CI-artefact/` first, see
+To rebuild it after code changes (regenerate `CI-artefact/` first, from empty, see
 above, then):
 
 ```powershell
 dotnet tool install --global wix --version 5.0.2   # one-time; skip if already installed
 wix extension add -g WixToolset.UI.wixext/5.0.2    # one-time
+New-Item -ItemType Directory -Force release | Out-Null
 cd installer
-wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact/AudioTunePro-Setup.msi
+wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../release/AudioTunePro-Setup.msi
 ```
+
+The MSI is written to `release/` (git-ignored), not `CI-artefact/`, so a rebuild can never pack the previous
+MSI inside the new one. The installer version in `AudioTunePro.wxs` must match `<Version>` in `Directory.Build.props`.
+Uninstalling does not remove the per-user "Start with Windows" entry (an installer running per machine cannot
+safely edit other users' registry hives); it then points at a missing file and is ignored. Turn the toggle off
+in the app before uninstalling, or remove it under Settings → Apps → Startup.
 
 ### Reproducible, verifiable builds
 
@@ -129,7 +147,9 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
 - **Signed installer:** `.github/workflows/release.yml` (runs on a `v*` tag or manually) builds the
   MSI, signs the app binaries and the MSI with `installer/sign.ps1` when the repository secrets
   `SIGNING_CERT_PFX_BASE64` and `SIGNING_CERT_PASSWORD` exist, and uploads the installer with a
-  `SHA256SUMS.txt`. Without the secrets it still builds, unsigned. You can also sign locally:
+  `SHA256SUMS.txt`. The secrets are exposed only to the two signing steps (never to restore, test, publish or
+  the WiX install), and signing only happens for tags and `master`. Without the secrets it still builds,
+  unsigned, and the run prints a warning: an unsigned build can be blocked by Smart App Control. You can also sign locally:
   `./installer/sign.ps1 -PfxPath cert.pfx -PfxPassword (Read-Host -AsSecureString)`, `wix build`,
   then `./installer/sign.ps1 -Target Msi ...`. A code-signing certificate (from a public CA) is
   required; `*.pfx` files are git-ignored.
@@ -179,8 +199,9 @@ wix build AudioTunePro.wxs -ext WixToolset.UI.wixext -arch x64 -o ../CI-artefact
   **Auto-gain trim**, the level change actually being applied (limiter plus
   speaker-widening trim), which always matches the `Preamp:` line written to
   Equalizer APO.
-- **Live output level meter** via WASAPI loopback capture (visual only —
-  negligible CPU cost). Full-width bar on a -18..+6 dBFS scale (ticks every
+- **System-mix level meter** ("SYSTEM MIX (PRE-EQ)") via WASAPI loopback capture (visual only —
+  negligible CPU cost). It shows the mix Windows sends to Equalizer APO, so it does **not** show clipping the EQ
+  itself adds. Full-width bar on a -18..+6 dBFS scale (ticks every
   6 dB, live dB readout): teal only at the bottom, amber through the middle,
   red from 0 dBFS up, with the last 6 dB reserved for over-range. It falls off
   smoothly, stops while the window is hidden or minimized, and follows the
@@ -216,7 +237,9 @@ Windows' own audio engine process (`audiodg.exe`), entirely separate from
 this app. What's measured below is only AudioTune Pro's own UI process.
 
 Measured on the built `CI-artefact\AudioTunePro.exe` (Release,
-framework-dependent), idle with the level meter running (its default state):
+framework-dependent, version 1.2.1), idle with the level meter running (its default state).
+Version 1.2.2 adds four background worker threads (apply, save, volume, meter) that sleep until there is work;
+the figures below have not been re-measured for it:
 
 | Metric | Result |
 |---|---|
@@ -262,13 +285,25 @@ applied via `SystemParameters.FocusVisualStyleKey`.
   written into it. Network/UNC paths, relative paths, alternate streams,
   wildcards and anything containing a line break are rejected (tests in
   `SecurityHardeningTests.cs`).
+- **HRTF files are checked, not just their paths:** before a path reaches the config, the file must be a real
+  (not linked) RIFF/WAVE file of at most 4 MB, 65,536 samples and 16 channels, so the audio service is never pointed
+  at something that could stall it. This is re-checked on every apply. It narrows the risk but cannot remove it:
+  the file lives in a folder the user (and any program running as the user) can write, and could be swapped after
+  the check.
+- **The rest of your Equalizer APO config is read (never changed):** `Preamp:` lines in `config.txt` (and files it
+  includes from the same folder) are added to the limiter's estimate, and a `VSTPlugin:` line (third-party code loaded
+  into the Windows audio service) is called out in the Limiter section.
+- **Diagnostics:** errors are written to `%AppData%\AudioTunePro\logs\app.log` (capped at 256 KB, rolls to
+  `app.log.1`; startup failures go to `startup-error.log`). Logs contain exception text and file paths, no audio or
+  personal data, and never leave the PC. Unhandled errors on the UI thread are logged and the app keeps running.
 - Settings and preset files over 2 MB are ignored, and loaded values are clamped
   to their valid ranges.
 - Dependencies are pinned by lock files and audited for known vulnerabilities in CI
   (see "Reproducible, verifiable builds"). CI actions are pinned to commit hashes.
 - Known limits: Equalizer APO's own `config` folder is writable by normal users
-  by design, so keep untrusted software off the machine; the installer is
-  unsigned until you add a code-signing certificate.
+  by design (verified: `BUILTIN\Users` has Full Control) while the Windows audio service reads it, so any program
+  running as you can change what that service loads. That is Equalizer APO's design, not something this app can fix;
+  keep untrusted software off the machine. The installer is unsigned until you add a code-signing certificate.
 
 ## Quality review (QA and design)
 
@@ -310,42 +345,30 @@ logic; some behaviours need a real machine or real Windows sessions.
 | Layout | The new trim caption briefly pushed the PeakIndicator badge below the sidebar fold; the Limiter readout is now a two-row grid with the badge pinned right. |
 | Testability | Include-line and meter logic moved into `Core` (`ApoConfigWriter`, `LevelMeterMath`) with 28 new tests. |
 
-### Open items (not changed)
+### Audit follow-up (2026-10-06, v1.2.2)
 
-- **Design system adherence:** teal is used as the default fill (faders, six
-  slider fills, radio dot, title-bar logo) rather than "one primary color per
-  view"; when the Equalizer APO banner shows there are two teal primary buttons;
-  the scale labels use a true minus (−12) while values use a hyphen (-12.0).
-- **Contrast (WCAG, computed from `tokens.json`):** text, danger, warn and teal
-  pass; `track-guide` is 3.2:1 on panels but 2.96:1 on raised surfaces;
-  `border-panel` against the panel is 1.2:1, so panel edges lean on a weak shadow.
-- **Accessibility:** the output-level meter has a name but exposes no value to
-  screen readers.
-- **Tests:** `MainViewModel` has no unit tests (it creates real services and
-  writes to AppData; it would need its services injected). CI runs only the
-  `Core` tests, not the WPF project.
-- **Clipping with other Equalizer APO settings (observed on the test machine):**
-  the limiter only sees AudioTune Pro's own settings, not the rest of
-  `config.txt`. With an existing `Preamp: +2.7 dB` there plus AudioTune Pro's
-  +3.0 dB, bass/low-band boosts and Auto-gain protection off, the endpoint's
-  peak meter sat at 1.000 (full scale) while the pre-EQ mix peaked at 0.985,
-  i.e. no headroom. Keep Auto-gain protection on and check `config.txt` for
-  other preamp/gain lines. Whether the output was actually clipping (rather
-  than just at full scale) was not isolated, because other audio was playing.
-- **Level meter position:** a 3 kHz test tone read about 0 dB through the
-  loopback (expected about +6 dB if the EQ had been applied), which supports
-  the "pre-EQ" description above. One unexplained inconsistency remains: the
-  browser's own session meter read lower than the loopback mix.
-- **Possible app hangs:** Windows logged two "AudioTunePro.exe stopped
-  interacting with Windows" events on the test machine, from an earlier
-  installed build (before these changes). No dump was captured and they were
-  not reproduced across many launches of the current build; cause unknown.
-- **Not tested:** DPI scales other than the one used for the live run, screen
-  readers, the installer, whether the app can write to Equalizer APO's config
-  folder as a standard user on every install, whether the audio service can read
-  an HRTF file stored in a user folder, how Equalizer APO treats `#` inside a
-  path, and the "before the equalizer" claim for the level meter.
+A second, read-only audit (security checklist, Windows host checks, design review) found ten issues. This is what
+changed and what is still open. "Fixed" means changed in code and covered by a build and the 146 unit tests (up from
+92); nothing here was verified by running the full UI, so please exercise the window once after updating.
 
+| ID | Finding | Status |
+|----|---------|--------|
+| F-01 | Unsigned binaries blocked by Smart App Control; the installed app crashed 5 times at startup (10/5) with no message | **Partly fixed.** Startup failures now show a message and write `startup-error.log`; the release run warns when unsigned. **Still open:** the binaries stay unsigned until a code-signing certificate and the two `SIGNING_CERT_*` secrets exist. That needs a purchase and cannot be done in the repo. |
+| F-02 | Auto-gain off, plus `Preamp: 2.7 dB` in `config.txt` (about +14 dB at 31 Hz on the audited PC) | **Fixed in the app:** the limiter counts the rest of `config.txt`'s Preamp lines, and the Limiter section states them. Your own `config.txt` and presets were deliberately not edited; whether Auto-gain stays off is your choice. |
+| F-03 | Recurring "stopped interacting with Windows" hangs (6 in 4 days) | **Mitigated, not proven fixed.** Every disk, registry and Windows-audio call (config and settings writes, volume, meter, device discovery) now runs on background workers, and shutdown flushes with a 3 s cap. The hang itself was never reproduced and no dump exists. Watch Event Viewer (Application, Event 1002) and `app.log`; to capture evidence, enable Windows Error Reporting LocalDumps for `AudioTunePro.exe`. |
+| F-04 | No error handling or logging; every build reported version 1.0.0.0 | **Fixed.** Global handlers + `app.log`; version 1.2.2 in every build; symbols embedded so stack traces keep line numbers. |
+| F-05 | Release workflow exposed the signing key to every step | **Fixed.** Secrets reach only the two signing steps; signing only on tags and `master`. |
+| F-06 | Equalizer APO's config folder is writable by all users and read by the audio service; HRTF files unchecked | **Mitigated.** HRTF files are validated (see Security notes), `VSTPlugin:` lines are flagged. The folder permission is Equalizer APO's design and remains. |
+| F-07 | Meter labelled "OUTPUT LEVEL" but reads before the EQ | **Fixed.** Now "SYSTEM MIX (PRE-EQ)", with an explanatory tooltip; design docs updated. |
+| F-08 | Installer: stale-MSI embedding, loose PDBs, autostart re-pointing, uninstall leftover | **Fixed except the leftover:** MSI now builds into `release/`, no PDBs, autostart is repaired only when stale. Uninstall still leaves the per-user "Start with Windows" entry (see Installer). |
+| F-09 | Design-system gaps | **Mostly fixed:** `track-guide` raised to #66718A (3.3:1 on raised surfaces); text-input and dropdown borders use it; scale labels use the same minus as the values; meter value is exposed to screen readers (not tested with a real screen reader); the "one teal" rule is reconciled in the design docs. **Accepted as designed:** `text-disabled` (2.2:1) and `accent-muted` (2.3:1) are only used for disabled controls, which WCAG exempts, and `border-panel` (1.2:1) is decoration on panels that need no border to be identified. |
+| F-10 | Tests and CI | **Partly fixed:** 54 new tests cover the new Core code. **Still open:** `MainViewModel` and the WPF project have no unit tests (they would need injected services), CI still runs only the Core tests, and xUnit v2 / the three test-support packages were not upgraded (a migration to xUnit v3 should be tested on its own). |
+
+Other open items from the first review, unchanged: a 3 kHz test tone supports the "pre-EQ" meter description, but
+one inconsistency with the browser's own session meter was never explained; not tested: DPI scales other than the
+one used for the live run, screen readers, the installer, whether the app can write to Equalizer APO's config
+folder as a standard user on every install, whether the audio service can read an HRTF file stored in a user folder,
+and how Equalizer APO treats `#` inside a path.
 ## Project layout
 
 ```
@@ -396,4 +419,5 @@ User settings and custom presets are stored as JSON under
 - Auto detection relies on the driver reporting the endpoint form factor;
   if a device is misclassified, choose Speakers or Headphones manually.
 - The level meter reflects the *pre-EQ* system mix (WASAPI loopback on the
-  default render device), not Equalizer APO's post-processing output.
+  default render device), not Equalizer APO's post-processing output, so it cannot show clipping the EQ adds.
+  Keep Auto-gain protection on for that; the limiter now includes `Preamp:` lines from the rest of `config.txt`.
