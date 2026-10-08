@@ -89,8 +89,9 @@ cannot switch it back on without a reset. Run the tests in CI or on a machine wh
 python tools/build_hrtf.py <path-to-unzipped-compact> "$env:APPDATA\AudioTunePro\hrtf\mit-kemar-30deg.wav"
 ```
 
-Then pick that file with **HRTF file…** in Headphones mode. The generated
-`.wav` is deliberately **not** committed or bundled in the installer: the MIT
+The app no longer has a control for choosing an HRTF file (the **HRTF file…** button was removed), and it
+ignores any HRTF path left in older settings; the config generator and this script remain for anyone who wants to
+wire a file in by hand. The generated `.wav` is deliberately **not** committed or bundled in the installer: the MIT
 download ships without a licence file, and its terms may be limited to
 educational/research use, so check them before redistributing it. The script
 needs `numpy`. Files with 2 channels are convolved per ear; 4 channels are a
@@ -178,9 +179,7 @@ in the app before uninstalling, or remove it under Settings → Apps → Startup
   - **Headphones**: crossfeed (each ear also hears the opposite channel,
     low-passed at 700 Hz and delayed 0.27 ms), which keeps mono level
     unchanged. Cost: two biquads and a short delay.
-  - **Headphones + HRTF file** (optional): pick a short binaural `.wav` and
-    Equalizer APO convolves with it for true 3D. This is the only mode with a
-    noticeable CPU cost; the Amount slider does not affect it.
+  - **Headphones + HRTF file**: no longer selectable in the app (see "HRTF impulse response" above).
   - **Auto** reads the default output's form factor (speakers / headphones /
     headset) via Windows Core Audio and switches when you plug in a jack or
     change device. It is event-driven, with no polling. Off / Speakers /
