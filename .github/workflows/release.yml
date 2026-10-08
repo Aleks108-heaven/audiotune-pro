@@ -24,6 +24,10 @@ permissions:
 jobs:
   build-installer:
     runs-on: windows-latest
+    # Gate: the job waits for an approval from the environment's required reviewers before it starts,
+    # and the signing secrets live in this environment (not as repository secrets), so a new tag or
+    # a collaborator's manual run cannot use the certificate without sign-off.
+    environment: release-signing
     env:
       # A true/false flag, not the secret itself.
       CAN_SIGN: ${{ (github.ref_type == 'tag' || github.ref == 'refs/heads/master') && secrets.SIGNING_CERT_PFX_BASE64 != '' }}

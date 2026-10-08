@@ -280,30 +280,10 @@
                                 <Slider Grid.Column="1" Style="{StaticResource HSlider}" Minimum="0" Maximum="1"
                                         SmallChange="0.05" LargeChange="0.1"
                                         AutomationProperties.Name="Surround amount" Value="{Binding SurroundAmount}"
-                                        ToolTip="Strength of the widening or crossfeed. It has no effect while an HRTF file is loaded." />
+                                        ToolTip="Strength of the speaker widening or headphone crossfeed." />
                                 <TextBlock Grid.Column="2" Text="{Binding SurroundAmount, StringFormat={}{0:P0}}"
                                            Style="{StaticResource value-lg}" VerticalAlignment="Center" HorizontalAlignment="Right" />
                             </Grid>
-                            <StackPanel Margin="0,12,0,0" Visibility="{Binding ShowHrtfRow, Converter={x:Static vm:BoolToVisibleConverter.Instance}}">
-                                <TextBlock Text="{Binding HrtfFileName}" Style="{StaticResource caption}"
-                                           TextTrimming="CharacterEllipsis" Margin="0,0,0,8"
-                                           ToolTipService.ShowDuration="30000">
-                                    <TextBlock.ToolTip>
-                                        <TextBlock MaxWidth="320" TextWrapping="Wrap"
-                                                   Text="Optional. Without a file, Headphones mode uses built-in crossfeed, which works well for most people. An HRTF file is a 2-channel binaural impulse-response WAV for personalized 3D positioning — it isn't bundled with AudioTune Pro. Free sets: HeSuVi's bundled HRIRs, or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
-                                    </TextBlock.ToolTip>
-                                </TextBlock>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Button Grid.Column="0" Content="HRTF file…" Padding="8,6" Margin="0,0,4,0" Click="BrowseHrtf_Click"
-                                            ToolTip="Pick a 2-channel HRTF/BRIR impulse-response .wav. None ships with the app — see HeSuVi or the SADIE II / MIT KEMAR / CIPIC HRTF databases." />
-                                    <Button Grid.Column="1" Content="Clear" Padding="8,6" Margin="4,0,0,0" Click="ClearHrtf_Click"
-                                            ToolTip="Remove the HRTF file and fall back to built-in crossfeed." />
-                                </Grid>
-                            </StackPanel>
 
                             <TextBlock Text="LIMITER — CLIPPING PROTECTION" Style="{StaticResource section-label}" Margin="0,16,0,8" />
                             <CheckBox Content="Auto-gain protection" IsChecked="{Binding AutoGainProtection}" Margin="0,0,0,8"

@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Keeps the SHA-pinned actions in .github/workflows current (PRs update the SHA and the version comment).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # NuGet packages. The repo restores with --locked-mode, so merge these PRs only when
+  # packages.lock.json is updated in the same PR.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"

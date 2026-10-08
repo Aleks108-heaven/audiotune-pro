@@ -411,50 +411,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         set { if (value) SetSurroundMode(SurroundMode.Headphones); }
     }
 
-    /// <summary>Shows the HRTF file row whenever headphone processing is in effect (manual or Auto).</summary>
-    public bool ShowHrtfRow => EffectiveSurroundMode == SurroundMode.Headphones;
-
     public bool SurroundActive => _engine.Surround.Mode != SurroundMode.Off;
 
-    /// <summary>
-    /// The Amount slider has no effect once an HRTF file is convolved (it only scales the widening
-    /// matrix and the crossfeed), so it is disabled then rather than left as a control that does nothing.
-    /// </summary>
-    public bool SurroundAmountEnabled =>
-        SurroundActive && !(ShowHrtfRow && !string.IsNullOrWhiteSpace(_engine.Surround.HrtfFilePath));
+    /// <summary>The Amount slider scales the widening / crossfeed, so it only does something while surround is on.</summary>
+    public bool SurroundAmountEnabled => SurroundActive;
 
     public double SurroundAmount
     {
         get => _engine.Surround.Amount;
         set { _engine.Surround.Amount = Math.Round(Math.Clamp(value, 0, 1), 2); OnPropertyChanged(); OnEqChanged(); }
-    }
-
-    public string HrtfFileName =>
-        string.IsNullOrWhiteSpace(_engine.Surround.HrtfFilePath)
-            ? "Crossfeed (no HRTF file)"
-            : Path.GetFileName(_engine.Surround.HrtfFilePath);
-
-    public void SetHrtfFile(string? path)
-    {
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            if (!SurroundSettings.IsSafeHrtfPath(path))
-            {
-                StatusMessage = "That file can't be used. Choose a .wav file stored on this PC (not a network path).";
-                return;
-            }
-
-            // A small read of the file's header, only when the user picks a file.
-            if (!HrtfFileValidator.TryValidate(path, out var reason))
-            {
-                StatusMessage = $"That HRTF file can't be used: {reason}.";
-                return;
-            }
-        }
-
-        _engine.Surround.HrtfFilePath = string.IsNullOrWhiteSpace(path) ? null : path;
-        RaiseSurroundChanged();
-        OnEqChanged();
     }
 
     private void SetSurroundMode(SurroundMode mode)
@@ -475,9 +440,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(SurroundHeadphones));
         OnPropertyChanged(nameof(SurroundActive));
         OnPropertyChanged(nameof(SurroundAmountEnabled));
-        OnPropertyChanged(nameof(ShowHrtfRow));
         OnPropertyChanged(nameof(SurroundAmount));
-        OnPropertyChanged(nameof(HrtfFileName));
     }
 
     /// <summary>
@@ -637,11 +600,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             try
             {
-                var note = DropUnusableHrtf(engine);
+                // The app no longer offers an HRTF file; ignore one left over in older settings or presets.
+                engine.Surround.HrtfFilePath = null;
                 external = _apo.ScanExternalConfig();
                 _apo.ApplyConfig(EqualizerApoConfigGenerator.Generate(engine.ResolveSurround(kind), external.PreampDb));
                 Volatile.Write(ref _lastAppliedKind, (int)kind);
-                status = $"Applied at {DateTime.Now:HH:mm:ss}." + note;
+                status = $"Applied at {DateTime.Now:HH:mm:ss}.";
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
@@ -651,20 +615,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         Post(() => ApplyCompleted(installed, external, status));
-    }
-
-    /// <summary>
-    /// Re-checks the HRTF file at apply time (it may have been replaced since it was chosen) and leaves it out of
-    /// the config if it is no longer a small, well-formed WAV. Returns a note for the status line, or empty.
-    /// </summary>
-    private static string DropUnusableHrtf(EqEngine engine)
-    {
-        var path = engine.Surround.HrtfFilePath;
-        if (string.IsNullOrWhiteSpace(path)) return string.Empty;
-        if (HrtfFileValidator.TryValidate(path, out var reason)) return string.Empty;
-
-        engine.Surround.HrtfFilePath = null;
-        return $" HRTF file ignored: {reason}.";
     }
 
     private void ApplyCompleted(bool installed, ExternalConfigInfo external, string status)

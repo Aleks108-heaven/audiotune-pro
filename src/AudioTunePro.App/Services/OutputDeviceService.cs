@@ -21,7 +21,9 @@ public sealed class OutputDeviceService : IDisposable
 
     private readonly MMDeviceEnumerator _enumerator = new();
     private readonly MMDeviceNotificationClient _notifications;
+    private readonly LatestWinsWorker<bool> _refreshWorker;
     private MMDevice? _device;
+    private volatile bool _disposed;
 
     /// <summary>Raised (on a background thread) when the default device, its jack state or its volume changes.</summary>
     public event Action? DeviceChanged;
@@ -29,12 +31,15 @@ public sealed class OutputDeviceService : IDisposable
 
     public OutputDeviceService()
     {
+        _refreshWorker = new LatestWinsWorker<bool>(_ => RefreshWhenSettled(), "OutputRefreshWorker");
         Attach();
         _notifications = _enumerator.CreateNotificationClient(useSynchronizationContext: false);
-        _notifications.DefaultDeviceChanged += (_, _) => Refresh();
-        _notifications.DeviceStateChanged += (_, _) => Refresh();
+        // These callbacks arrive on Windows' audio threads, which must return at once and must not call back
+        // into Core Audio (that can deadlock), so they only queue a refresh for the worker above.
+        _notifications.DefaultDeviceChanged += (_, _) => _refreshWorker.Submit(true);
+        _notifications.DeviceStateChanged += (_, _) => _refreshWorker.Submit(true);
         // Fires when a jack is plugged/unplugged and the driver flips the endpoint's form factor.
-        _notifications.PropertyValueChanged += (_, _) => Refresh();
+        _notifications.PropertyValueChanged += (_, _) => _refreshWorker.Submit(true);
     }
 
     public OutputKind Kind { get; private set; } = OutputKind.Speakers;
@@ -124,6 +129,28 @@ public sealed class OutputDeviceService : IDisposable
 
     private void OnVolume(AudioVolumeNotificationData data) => VolumeChanged?.Invoke(data.MasterVolume);
 
+    /// <summary>
+    /// An audio-endpoint reset fires a burst of notifications (the log shows 17 within one second), during which the
+    /// default device briefly doesn't exist (0x80070490). Refreshing on each one raced: the "no device" result could be
+    /// delivered last and leave the volume slider disabled. So wait for the burst to end, refresh once (one worker,
+    /// so results reach the UI in order), and retry a few times if the device is still missing.
+    /// </summary>
+    private void RefreshWhenSettled()
+    {
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            Thread.Sleep(attempt == 0 ? 200 : 1000);
+            if (_disposed) return;
+            Refresh();
+            if (HasDevice) return;
+        }
+    }
+
+    private bool HasDevice
+    {
+        get { lock (_enumerator) return _device is not null; }
+    }
+
     private void Refresh()
     {
         var (oldKind, oldName, oldId) = (Kind, DeviceName, _device?.ID);
@@ -135,7 +162,9 @@ public sealed class OutputDeviceService : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         _notifications.Dispose();
+        _refreshWorker.Dispose();
         lock (_enumerator) _device?.Dispose();
         _enumerator.Dispose();
     }
