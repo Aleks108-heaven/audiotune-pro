@@ -53,7 +53,7 @@ jobs:
       # Pictures of what those tests rendered, to work out a failure without a Windows desktop at hand.
       - name: Upload UI snapshots
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ui-snapshots
           path: src/AudioTunePro.App.UiTests/bin/Release/net10.0-windows/UiSnapshots/
