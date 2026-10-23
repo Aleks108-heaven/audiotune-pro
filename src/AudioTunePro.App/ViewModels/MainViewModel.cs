@@ -41,7 +41,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly ManualResetEventSlim _outputReady = new(false);
     private volatile OutputDeviceService? _output;
 
+    /// <summary>Slider stop that means "Low-cut off"; real corners start at <see cref="ClaritySettings.MinLowCutHz"/>.</summary>
+    private const double LowCutOffPosition = 25;
+
     private EqEngine _engine;
+    private EqEngine _presetReference; // the selected preset on the current band layout, for IsModified
+    private int _bandCount;
     private AppSettings _settings;
     private Preset? _selectedPreset;
     private string _statusMessage = string.Empty;
@@ -91,9 +96,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         foreach (var p in SanitizeUserPresets(_store.LoadUserPresets())) Presets.Add(p);
 
         _selectedPreset = Presets.FirstOrDefault(p => p.Name == _settings.ActivePresetName) ?? Presets[0];
+        // Everyone who has not picked a resolution yet (first run, or upgrading from the fixed 10-band build)
+        // starts on the default one; their curve is carried over by interpolation, so it sounds the same.
+        _bandCount = BandLayouts.IsSupported(_settings.BandCount) ? _settings.BandCount : BandLayouts.DefaultCount;
+        _settings.BandCount = _bandCount;
         // Restore the live state (which may differ from the preset if it was edited but never saved)
         // so the UI shows what was actually playing when the app last closed.
-        _engine = _settings.LiveEngine?.Sanitized() ?? _selectedPreset.Engine.Clone();
+        _engine = (_settings.LiveEngine?.Sanitized() ?? _selectedPreset.Engine).WithBandCount(_bandCount);
+        _presetReference = _selectedPreset.Engine.WithBandCount(_bandCount);
         RebuildBandViewModels();
 
         // Keep the launch-at-sign-in entry pointing at a copy that exists (e.g. after an upgrade moved it).
@@ -245,22 +255,26 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>The live EQ differs from the selected preset's saved values.</summary>
-    public bool IsModified => _selectedPreset is not null && !_engine.IsEquivalentTo(_selectedPreset.Engine);
+    /// <summary>The live EQ differs from the selected preset's saved values (compared on the current band layout).</summary>
+    public bool IsModified => _selectedPreset is not null && !_engine.IsEquivalentTo(_presetReference);
 
     public bool CanDeleteSelectedPreset => _selectedPreset is { IsBuiltIn: false };
 
     private void LoadPreset(Preset preset, bool applyImmediately)
     {
         _selectedPreset = preset;
-        _engine = preset.Engine.Clone();
+        // A preset keeps the resolution it was saved with; it is shown on the layout the user has chosen.
+        _engine = preset.Engine.WithBandCount(_bandCount);
+        _presetReference = _engine.Clone();
         RebuildBandViewModels();
+        RaiseResponseCurveChanged();
 
         OnPropertyChanged(nameof(SelectedPreset));
         OnPropertyChanged(nameof(CanDeleteSelectedPreset));
         OnPropertyChanged(nameof(BassDb));
         OnPropertyChanged(nameof(TrebleDb));
         OnPropertyChanged(nameof(PreampDb));
+        RaiseClarityChanged();
         OnPropertyChanged(nameof(EnableEqualizer));
         OnPropertyChanged(nameof(AutoGainProtection));
         OnPropertyChanged(nameof(LimiterCeilingDb));
@@ -281,7 +295,55 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         Bands.Clear();
         foreach (var band in _engine.Bands)
-            Bands.Add(new BandViewModel(band, OnEqChanged, () => BoostLimitDb));
+            Bands.Add(new BandViewModel(band, _engine.Bands.Count, OnEqChanged, () => BoostLimitDb));
+    }
+
+    // --- Graphic EQ resolution (10 / 15 / 31 bands) ---
+
+    public int BandCount => _bandCount;
+
+    public bool Bands10 { get => _bandCount == BandLayouts.Octave; set { if (value) SetBandCount(BandLayouts.Octave); } }
+    public bool Bands15 { get => _bandCount == BandLayouts.TwoThirdsOctave; set { if (value) SetBandCount(BandLayouts.TwoThirdsOctave); } }
+    public bool Bands31 { get => _bandCount == BandLayouts.ThirdOctave; set { if (value) SetBandCount(BandLayouts.ThirdOctave); } }
+
+    public string GraphicEqTitle => $"{_bandCount}-BAND GRAPHIC EQ";
+
+    private double[]? _responseCurve;
+
+    /// <summary>
+    /// The combined EQ response (faders, Bass, Treble, Clarity, Low-cut) as dB values across the fader row, for the line
+    /// drawn behind the faders (<see cref="FrequencyResponse.Sample"/>). Worked out on first use after each change; a few
+    /// hundred points of arithmetic, so it stays on the UI thread without any cost the user could notice.
+    /// </summary>
+    public IReadOnlyList<double> ResponseCurve => _responseCurve ??= FrequencyResponse.Sample(_engine);
+
+    private void RaiseResponseCurveChanged()
+    {
+        _responseCurve = null;
+        OnPropertyChanged(nameof(ResponseCurve));
+    }
+
+    /// <summary>Height of the value and frequency rows around the faders; the dB scale beside them uses the same rows.</summary>
+    public System.Windows.GridLength ReadoutRowHeight => BandDensity.ReadoutRowHeight(_bandCount);
+
+    /// <summary>Re-reads the curve on another band layout (see <see cref="BandLayouts.Switch"/> for how).</summary>
+    private void SetBandCount(int count)
+    {
+        if (!BandLayouts.IsSupported(count) || count == _bandCount) return;
+
+        _bandCount = count;
+        _settings.BandCount = count;
+        _engine = BandLayouts.Switch(_engine, _selectedPreset?.Engine, count);
+        _presetReference = _selectedPreset?.Engine.WithBandCount(count) ?? _engine.Clone();
+        RebuildBandViewModels();
+
+        OnPropertyChanged(nameof(BandCount));
+        OnPropertyChanged(nameof(Bands10));
+        OnPropertyChanged(nameof(Bands15));
+        OnPropertyChanged(nameof(Bands31));
+        OnPropertyChanged(nameof(GraphicEqTitle));
+        OnPropertyChanged(nameof(ReadoutRowHeight));
+        OnEqChanged();
     }
 
     private double BoostLimitDb => SignalStateCalculator.BoostLimitDb(AutoGainProtection, LimiterCeilingDb);
@@ -309,6 +371,44 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _engine.PreampDb;
         set { _engine.PreampDb = Math.Round(Math.Clamp(value, -24, 12), 1); OnPropertyChanged(); OnEqChanged(); }
+    }
+
+    // --- Clarity ---
+
+    /// <summary>Strength of the clarity curve (low-mid cut, speech presence, air), 0..1.</summary>
+    public double ClarityAmount
+    {
+        get => _engine.Clarity.Amount;
+        set { _engine.Clarity.Amount = Math.Round(Math.Clamp(value, 0, 1), 2); OnPropertyChanged(); OnEqChanged(); }
+    }
+
+    /// <summary>
+    /// Low-cut corner for the slider. The lowest stop (<see cref="LowCutOffPosition"/>) is "Off"; the engine stores
+    /// 0 for off, so a value dragged into the Off zone snaps back to that stop.
+    /// </summary>
+    public double LowCutHz
+    {
+        get => ClaritySettings.IsLowCutOn(_engine.Clarity.LowCutHz) ? _engine.Clarity.LowCutHz : LowCutOffPosition;
+        set
+        {
+            double hz = Math.Round(Math.Clamp(value, LowCutOffPosition, ClaritySettings.MaxLowCutHz));
+            _engine.Clarity.LowCutHz = ClaritySettings.IsLowCutOn(hz) ? hz : 0;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LowCutText));
+            OnEqChanged();
+        }
+    }
+
+    /// <summary>"Off" or e.g. "80 Hz".</summary>
+    public string LowCutText => ClaritySettings.IsLowCutOn(_engine.Clarity.LowCutHz)
+        ? string.Create(CultureInfo.InvariantCulture, $"{_engine.Clarity.LowCutHz:0} Hz")
+        : "Off";
+
+    private void RaiseClarityChanged()
+    {
+        OnPropertyChanged(nameof(ClarityAmount));
+        OnPropertyChanged(nameof(LowCutHz));
+        OnPropertyChanged(nameof(LowCutText));
     }
 
     public bool EnableEqualizer
@@ -563,6 +663,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnEqChanged()
     {
+        RaiseResponseCurveChanged();
         OnPropertyChanged(nameof(EstimatedPeakDb));
         OnPropertyChanged(nameof(AutoGainTrimDb));
         OnPropertyChanged(nameof(PeakState));
@@ -693,7 +794,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                         $" Switched to {Presets[0].Name}.";
     }
 
-    /// <summary>Sets every band, Bass, Treble and Preamp back to 0 dB (surround and limiter settings are kept).</summary>
+    /// <summary>Sets every band, Bass, Treble and Preamp back to 0 dB and turns Clarity and Low-cut off (surround and limiter settings are kept).</summary>
     public void ResetCurrentPreset()
     {
         _engine.Reset();
@@ -701,6 +802,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BassDb));
         OnPropertyChanged(nameof(TrebleDb));
         OnPropertyChanged(nameof(PreampDb));
+        RaiseClarityChanged();
         OnEqChanged();
     }
 

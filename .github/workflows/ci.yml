@@ -44,3 +44,18 @@ jobs:
 
       - name: Test
         run: dotnet test src/AudioTunePro.Core.Tests/AudioTunePro.Core.Tests.csproj --configuration Release --no-build --verbosity normal
+
+      # Renders the real MainWindow.xaml offscreen with a stand-in view model and checks its layout and the response
+      # curve (src/AudioTunePro.App.UiTests). Nothing here touches Equalizer APO, the registry or the audio service.
+      - name: UI layout tests
+        run: dotnet test src/AudioTunePro.App.UiTests/AudioTunePro.App.UiTests.csproj --configuration Release --no-build --verbosity normal
+
+      # Pictures of what those tests rendered, to work out a failure without a Windows desktop at hand.
+      - name: Upload UI snapshots
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-snapshots
+          path: src/AudioTunePro.App.UiTests/bin/Release/net10.0-windows/UiSnapshots/
+          if-no-files-found: ignore
+          retention-days: 7

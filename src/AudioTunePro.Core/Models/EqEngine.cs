@@ -1,16 +1,15 @@
 namespace AudioTunePro.Core.Models;
 
 /// <summary>
-/// The full, live equalizer state: 10-band graphic EQ, bass/treble shelves,
-/// master preamp, and limiter settings. This is the single source of truth
+/// The full, live equalizer state: graphic EQ (10, 15 or 31 bands, see <see cref="BandLayouts"/>), bass/treble
+/// shelves, clarity filters, master preamp, and limiter settings. This is the single source of truth
 /// that gets serialized to disk (as a profile) and rendered to an
 /// Equalizer APO config by <see cref="AudioTunePro.Core.Services.EqualizerApoConfigGenerator"/>.
 /// </summary>
 public sealed class EqEngine
 {
-    /// <summary>Standard 10-band ISO graphic EQ center frequencies.</summary>
-    public static readonly double[] StandardBandFrequencies =
-        { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+    /// <summary>Standard 10-band octave graphic EQ center frequencies (the original layout, see <see cref="BandLayouts.Octave"/>).</summary>
+    public static readonly double[] StandardBandFrequencies = BandLayouts.Frequencies(BandLayouts.Octave);
 
     public List<EqBand> Bands { get; set; }
 
@@ -29,10 +28,19 @@ public sealed class EqEngine
 
     public SurroundSettings Surround { get; set; } = new();
 
+    /// <summary>Clarity curve and low-cut filter. Absent in files saved by older versions, which then load as off.</summary>
+    public ClaritySettings Clarity { get; set; } = new();
+
     public EqEngine()
     {
         Bands = StandardBandFrequencies.Select(f => new EqBand(f)).ToList();
     }
+
+    /// <summary>A flat engine on one of the supported band layouts.</summary>
+    public static EqEngine Create(int bandCount) => new()
+    {
+        Bands = BandLayouts.Frequencies(bandCount).Select(f => new EqBand(f)).ToList(),
+    };
 
     public EqEngine Clone()
     {
@@ -45,7 +53,56 @@ public sealed class EqEngine
             EnableEqualizer = EnableEqualizer,
             Limiter = Limiter.Clone(),
             Surround = Surround.Clone(),
+            Clarity = (Clarity ?? new ClaritySettings()).Clone(),
         };
+    }
+
+    /// <summary>
+    /// Returns a copy expressed on the <paramref name="bandCount"/>-band layout. The curve is read off the current
+    /// bands by straight-line interpolation over log-frequency (holding the end values beyond the first and last
+    /// band), which is how a <c>GraphicEQ</c> line is drawn between its points, so the sound stays essentially the
+    /// same. Going to fewer bands smooths fine detail that the coarser layout cannot hold. Always a new object.
+    /// </summary>
+    public EqEngine WithBandCount(int bandCount)
+    {
+        var target = BandLayouts.Frequencies(bandCount);
+        var copy = Clone();
+
+        bool sameLayout = copy.Bands.Count == target.Length;
+        for (int i = 0; sameLayout && i < target.Length; i++)
+            sameLayout = copy.Bands[i].FrequencyHz == target[i];
+        if (sameLayout) return copy;
+
+        var source = copy.Bands
+            .Where(b => double.IsFinite(b.FrequencyHz) && b.FrequencyHz > 0)
+            .OrderBy(b => b.FrequencyHz)
+            .ToArray();
+        copy.Bands = target
+            .Select(f => new EqBand(f, Math.Clamp(Math.Round(GainAt(source, f), 1), -12, 12)))
+            .ToList();
+        return copy;
+    }
+
+    private static double GainAt(EqBand[] sorted, double hz)
+    {
+        static double Gain(EqBand b) => double.IsFinite(b.GainDb) ? b.GainDb : 0;
+
+        if (sorted.Length == 0) return 0;
+        if (hz <= sorted[0].FrequencyHz) return Gain(sorted[0]);
+        if (hz >= sorted[^1].FrequencyHz) return Gain(sorted[^1]);
+
+        for (int i = 1; i < sorted.Length; i++)
+        {
+            double hi = sorted[i].FrequencyHz;
+            if (hz > hi) continue;
+
+            double lo = sorted[i - 1].FrequencyHz;
+            if (hi <= lo) return Gain(sorted[i]);
+            double t = (Math.Log(hz) - Math.Log(lo)) / (Math.Log(hi) - Math.Log(lo));
+            return Gain(sorted[i - 1]) + (Gain(sorted[i]) - Gain(sorted[i - 1])) * t;
+        }
+
+        return Gain(sorted[^1]);
     }
 
     /// <summary>Returns a copy with <see cref="SurroundMode.Auto"/> replaced by the mode matching the output device.</summary>
@@ -57,7 +114,7 @@ public sealed class EqEngine
         return copy;
     }
 
-    /// <summary>True when both engines would render to the same sound (band gains, tone, preamp, limiter, surround).</summary>
+    /// <summary>True when both engines would render to the same sound (band gains, tone, clarity, preamp, limiter, surround).</summary>
     public bool IsEquivalentTo(EqEngine other)
     {
         if (Bands.Count != other.Bands.Count) return false;
@@ -67,9 +124,14 @@ public sealed class EqEngine
                 Math.Abs(Bands[i].GainDb - other.Bands[i].GainDb) > 0.001) return false;
         }
 
+        var clarity = Clarity ?? new ClaritySettings();
+        var otherClarity = other.Clarity ?? new ClaritySettings();
+
         return Math.Abs(BassDb - other.BassDb) <= 0.001 &&
                Math.Abs(TrebleDb - other.TrebleDb) <= 0.001 &&
                Math.Abs(PreampDb - other.PreampDb) <= 0.001 &&
+               Math.Abs(clarity.Amount - otherClarity.Amount) <= 0.001 &&
+               Math.Abs(EffectiveLowCutHz(clarity) - EffectiveLowCutHz(otherClarity)) <= 0.001 &&
                EnableEqualizer == other.EnableEqualizer &&
                Limiter.AutoGainProtection == other.Limiter.AutoGainProtection &&
                Math.Abs(Limiter.CeilingDb - other.Limiter.CeilingDb) <= 0.001 &&
@@ -79,22 +141,25 @@ public sealed class EqEngine
                    StringComparison.Ordinal);
     }
 
+    private static double EffectiveLowCutHz(ClaritySettings c) => ClaritySettings.IsLowCutOn(c.LowCutHz) ? c.LowCutHz : 0;
+
     /// <summary>
-    /// Repairs a deserialized (possibly hand-edited or corrupt) engine: exactly the ten standard
-    /// bands, every value finite and inside its control's range. Returns a new engine.
+    /// Repairs a deserialized (possibly hand-edited or corrupt) engine: one of the supported band layouts
+    /// (anything else falls back to the ten standard bands), every value finite and inside its control's range.
+    /// Returns a new engine.
     /// </summary>
     public EqEngine Sanitized()
     {
         static double Fix(double v, double min, double max, double fallback = 0) =>
             double.IsFinite(v) ? Math.Clamp(v, min, max) : fallback;
 
-        var result = new EqEngine
-        {
-            BassDb = Fix(BassDb, -12, 12),
-            TrebleDb = Fix(TrebleDb, -12, 12),
-            PreampDb = Fix(PreampDb, -24, 12),
-            EnableEqualizer = EnableEqualizer,
-        };
+        int bandCount = Bands is not null && BandLayouts.IsSupported(Bands.Count) ? Bands.Count : BandLayouts.Octave;
+
+        var result = Create(bandCount);
+        result.BassDb = Fix(BassDb, -12, 12);
+        result.TrebleDb = Fix(TrebleDb, -12, 12);
+        result.PreampDb = Fix(PreampDb, -24, 12);
+        result.EnableEqualizer = EnableEqualizer;
 
         for (int i = 0; i < result.Bands.Count; i++)
         {
@@ -109,6 +174,15 @@ public sealed class EqEngine
             CeilingDb = Fix(limiter.CeilingDb, -6, 0, -0.3),
         };
 
+        var clarity = Clarity ?? new ClaritySettings();
+        result.Clarity = new ClaritySettings
+        {
+            Amount = Fix(clarity.Amount, 0, 1),
+            LowCutHz = ClaritySettings.IsLowCutOn(clarity.LowCutHz)
+                ? Math.Clamp(clarity.LowCutHz, ClaritySettings.MinLowCutHz, ClaritySettings.MaxLowCutHz)
+                : 0,
+        };
+
         var surround = Surround ?? new SurroundSettings();
         result.Surround = new SurroundSettings
         {
@@ -120,12 +194,14 @@ public sealed class EqEngine
         return result;
     }
 
+    /// <summary>Back to a flat, uncolored sound: every band, Bass, Treble, Preamp, Clarity and Low-cut at 0 / off.</summary>
     public void Reset()
     {
         foreach (var b in Bands) b.GainDb = 0;
         BassDb = 0;
         TrebleDb = 0;
         PreampDb = 0;
+        Clarity = new ClaritySettings();
     }
 }
 

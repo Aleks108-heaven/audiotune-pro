@@ -6,7 +6,7 @@ Reference notes per component, exported from the AudioTune Pro design system art
 
 The custom window chrome that replaces the native Windows title bar. Left side: a 14px monoline app glyph in `accent-teal` plus the app name set in 12px/600 `text-primary`; right side: minimize, maximize and close, each a 46px-wide hit target. Give the whole bar a 1px `divider` bottom border on `app-bg-top` so it reads as a strip of chrome, not part of the content below.
 
-- Icon and title never wrap or truncate with an ellipsis at the window's minimum width -- shorten the subtitle before the wordmark. (The desktop app's minimum is 980px wide, so the EQ's ten +12.0 readouts fit; 360px only applies to the design-system web previews.)
+- Icon and title never wrap or truncate with an ellipsis at the window's minimum width -- shorten the subtitle before the wordmark. (The desktop app's minimum is 1040px wide, so the +12.0 readouts of the 15-band layout and the rotated readouts of the 31-band layout fit; 360px only applies to the design-system web previews.)
 - Caption buttons behave like the native ones: not tab stops (`Focusable=False`); keyboard equivalents are Win+Up/Down and Alt+F4. Every other control shows the focus ring.
 - Minimize and maximize hover to `surface-panel` with `text-primary`; close is the one destructive control in the bar and hovers to a filled `signal-danger` with `ink-on-accent` glyph -- no other title-bar button ever takes a signal color.
 - Do not add extra icons, a search field or a menu bar here; the title bar is chrome only.
@@ -47,14 +47,52 @@ The horizontal Tone control -- Bass, Treble, Preamp -- pairing a label, a track 
 
 ## Fader
 
-One band of the 10-band graphic EQ: a thin vertical track, a filled handle with a soft glow beneath it, the gain value above in monospace and the center frequency below. Color is never fixed -- it is a live function of the band's gain relative to the limiter ceiling: `signal-safe` while there is comfortable headroom, `signal-warn` once the band is within the limiter's caution margin of the ceiling, `signal-danger` once it is within the final margin or clipping. The dB value's text color always matches the handle's color, so the number and the mark agree.
+One band of the graphic EQ (10, 15 or 31 bands, see Density below): a thin vertical track, a filled handle with a soft glow beneath it, the gain value above in monospace and the center frequency below. Color is never fixed -- it is a live function of the band's gain relative to the limiter ceiling: `signal-safe` while there is comfortable headroom, `signal-warn` once the band is within the limiter's caution margin of the ceiling, `signal-danger` once it is within the final margin or clipping. The dB value's text color always matches the handle's color, so the number and the mark agree.
 
-- Track is a hairline 2px `track-fill` rule running the full height of the EQ panel, so ten bands read as one coherent grid, not ten separate widgets.
+- Track is a hairline 2px `track-fill` rule running the full height of the EQ panel, so the bands read as one coherent grid, not as separate widgets.
 - The handle is a short filled rounded bar (`radius-sm`), not a circle -- a circle reads as a knob, not a fader cap. A soft blurred glow in the same color sits behind it to suggest energy, at low opacity so it never competes with neighboring bands.
 - The rail and a 0 dB tick are `track-guide` (visible, not `track-fill`), with a +12 / 0 / -12 dB scale at the left of the row. Double-click a fader to reset it to 0 dB. While the equalizer is bypassed the faders drop to `accent-muted` with `text-disabled` values and no glow.
 - State = the band's boost measured against the limiter's boost budget (`SignalStateCalculator.BoostLimitDb`): 0 dB is always safe; warn within 3 dB and danger within 1 dB of the budget. With Auto-gain on the budget is 12 dB plus the (negative) ceiling; with it off it is a fixed 6 dB.
 - Never rely on color alone to signal risk: the dB value is always visible above the handle, and the Limiter section's `PeakIndicator` gives the same information as text for a band at risk.
-- Frequency labels are fixed and never move with the handle; they sit in a single row along the bottom of the EQ panel (31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k).
+- Frequency labels are fixed and never move with the handle; they sit in a single row along the bottom of the EQ panel (31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k at 10 bands; 25, 40, 63 ... 16k at 15; 20, 25, 31.5 ... 20k at 31). A label prints the frequency without its unit, with no more precision than it needs (31.5, 160, 1.25k, 12.5k), always with a "." decimal.
+
+**Density.** The EQ panel is about 600px wide at the default window size, so the readout size follows the band count; the value row above and the frequency row below are fixed-height at every density, so the dB scale at the left lines up with the fader travel.
+
+| Bands | Column | Cap (width x height) | dB value | Frequency label |
+| --- | --- | --- | --- | --- |
+| 10 (octave) | ~59px | 28 x 14 | `value-sm`, horizontal | `freq-label`, horizontal |
+| 15 (2/3 octave) | ~39px | 22 x 14 | `value-xs`, horizontal | `freq-label`, horizontal |
+| 31 (1/3 octave) | ~19px | 14 x 14 | `value-xs`, rotated -90 degrees (reads upward) | `freq-label`, rotated -90 degrees |
+
+- At 31 bands every band still shows its own number: the readouts stand on end rather than being hidden or limited to the hovered fader, so "the dB value is always visible above the handle" holds at every density. A tooltip names the band and its gain ("2.5 kHz: +3.5 dB") for anyone who wants a larger read.
+- The glow behind the cap is at 50% opacity at 10 and 15 bands and drops to 20% at 31, where neighboring caps are a few pixels apart and a stronger glow would blur them into one ribbon.
+- The 0 dB tick reaches 4px past the cap on both sides at every density. The focus ring is the same 2px `focus-ring` outline, drawn around the slider's own (narrower) bounds.
+- The accessible name states the frequency in words ("250 hertz band gain", "2.5 kilohertz band gain"); the gain is the slider's value, so a screen reader announces it as it changes.
+
+## ResponseCurve
+
+One neutral line drawn behind the faders that shows the combined response of everything on the EQ panel: the graphic curve plus Bass, Treble, Clarity and Low-cut. It is what makes the extra bands and the clarity controls readable at a glance -- with only the faders in play it runs through the center of every cap, and wherever it leaves them you are seeing what the shelves, Clarity or Low-cut add. A legend at the right of the hint row ("Total response", a short sample of the line) names it.
+
+- Same +12 / 0 / -12 dB scale as the faders, and the same rows as a band column, so the dB scale at the left serves both. Bands sit in equal columns, so the line is sampled in equal steps across the row; it passes through every cap's center and continues half a column past the first and last band, holding the end values flat there (the way Equalizer APO treats a GraphicEQ line).
+- `text-primary`, 1.5px, round joins. Neutral on purpose: the faders and the meter own the safe / warn / danger colors, teal is reserved for the one primary state, and nothing here is a gain-bearing control. No fill under the line and no point markers. While the equalizer is bypassed the line is flat and `text-disabled`, and so is the legend sample.
+- Drawn beneath the sliders, so caps and focus rings stay on top. It takes no input (hit testing off), has no focus and no automation peer: every value it draws is available from the faders and sliders themselves.
+- Values beyond +12 / -12 dB run along the top or bottom edge of the rail instead of leaving the panel (a Low-cut at 80 Hz takes the lowest bands below -12 dB).
+- It states what Equalizer APO is told, not a guess: it is computed from the same filter list that is written to the config file, for 48 kHz audio. It leaves out Preamp, the limiter's trim and 3D surround, which change level or stereo image rather than tone; the legend's tooltip says so.
+
+## BandSelector
+
+The BANDS choice at the right of the EQ panel's header row: a `section-label` "BANDS" followed by three RadioButtons (10, 15, 31), the same RadioButton used for 3D Surround -- one choice, and its teal dot is the only teal in the control. The counts are numbers, so they are set in the `mono` family. The panel's `section-label` title follows the choice ("15-BAND GRAPHIC EQ").
+
+- Switching keeps the curve (by interpolation over log-frequency); an unedited preset is rebuilt from its own definition, so flipping back and forth never drifts. Going to fewer bands smooths fine detail: the tooltip says so.
+- The choice is a user setting, kept with the rest of the app's settings, not part of a preset: presets keep the resolution they were saved with and are shown on whichever layout is selected.
+
+## Clarity
+
+Two HSlider rows side by side under the faders, beneath a `section-label` "CLARITY": **Amount** (0-100%, `value-lg` readout) and **Low-cut** (30-150 Hz, with the leftmost stop reading "Off"). They live with the faders rather than in the sidebar because they shape the same curve, and because the sidebar's Limiter section must stay on screen at the default window size.
+
+- Both follow "Equalizer enabled": they drop to `accent-muted` / `text-disabled` together with the faders when it is off.
+- Amount scales three fixed filters (-2.5 dB at 300 Hz, +2.0 dB at 3.2 kHz, +1.5 dB high shelf at 10 kHz at 100%); the limiter reserves headroom for the boost, so the PeakIndicator and the Auto-gain trim readout account for it. Low-cut is a high-pass: it adds no gain and needs no headroom.
+- Reset turns both off; a preset stores both.
 
 ## LevelMeter
 

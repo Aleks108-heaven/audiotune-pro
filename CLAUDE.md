@@ -11,7 +11,7 @@ https://claude.ai/artifact/1uVTBDt2MGfzU4u1jDGzjL
 Ground rules when implementing UI:
 - `accent-teal` is the one primary/active color per view (primary button, active preset, enabled
   toggle, focus ring) — never use it as decoration.
-- The 10-band EQ faders and the output-level meter derive their fill color live from gain, using
+- The graphic-EQ faders (10, 15 or 31 bands) and the output-level meter derive their fill color live from gain, using
   `signal-safe` / `signal-warn` / `signal-danger` — never a fixed color per band.
 - Numeric values (dB, Hz) are always set in the mono family (`type.families.mono` in tokens.json),
   never the sans UI family.
