@@ -15,11 +15,16 @@ public static class AutoGainLimiter
     /// Estimates the worst-case peak boost (in dB) the current curve could produce,
     /// accounting for adjacent graphic-EQ bands reinforcing each other at their
     /// shared crossover point (a fixed overlap factor for the standard Q used by
-    /// <see cref="EqualizerApoConfigGenerator"/>'s GraphicEQ spline).
+    /// <see cref="EqualizerApoConfigGenerator"/>'s GraphicEQ line).
     /// </summary>
     public const double AdjacentBandOverlap = 0.35;
     public const double ShelfOverlapWithBands = 0.5;
 
+    /// <remarks>
+    /// The same rule is applied to every band layout (10, 15 or 31 bands). The result is never below the largest
+    /// single band gain, which is the highest point a <c>GraphicEQ</c> line drawn through the bands can reach,
+    /// so it stays on the safe side whichever resolution is in use.
+    /// </remarks>
     /// <param name="engine">The state to estimate.</param>
     /// <param name="externalGainDb">
     /// Gain added by the rest of the user's Equalizer APO config (its own <c>Preamp:</c> lines), which stacks on
@@ -40,6 +45,8 @@ public static class AutoGainLimiter
 
         worst += Math.Max(0, engine.BassDb) * ShelfOverlapWithBands;
         worst += Math.Max(0, engine.TrebleDb) * ShelfOverlapWithBands;
+        // The clarity presence peak / air shelf sit fully on top of whatever band is boosted at their frequency.
+        worst += ClaritySettings.WorstCaseBoostDb(engine.Clarity?.Amount ?? 0);
         worst += engine.PreampDb;
         worst += double.IsFinite(externalGainDb) ? externalGainDb : 0;
 

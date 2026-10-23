@@ -123,6 +123,16 @@
         <Setter Property="Foreground" Value="{StaticResource text-primary}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
     </Style>
+    <!-- value-xs: the fader dB readout once there are 15 or more bands (the column is too narrow for value-sm).
+         MainWindow's fader-value style applies this size (FontSize 11) through a DataTrigger on the band
+         layout, because a Style cannot be swapped per item; keep the two in step. -->
+    <Style x:Key="value-xs" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource font-mono}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource text-primary}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+    </Style>
     <Style x:Key="freq-label" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource font-mono}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />

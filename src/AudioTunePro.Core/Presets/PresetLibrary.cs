@@ -27,6 +27,13 @@ public static class PresetLibrary
         return engine;
     }
 
+    private static EqEngine WithClarity(EqEngine engine, double amount, double lowCutHz)
+    {
+        engine.Clarity.Amount = amount;
+        engine.Clarity.LowCutHz = lowCutHz;
+        return engine;
+    }
+
     private static List<Preset> Build() => new()
     {
         new Preset
@@ -35,6 +42,27 @@ public static class PresetLibrary
             Description = "No coloration — reference response.",
             IsBuiltIn = true,
             Engine = Make(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        },
+        new Preset
+        {
+            Name = "Clear Sound",
+            Description = "Cleaner, more open sound for music and video: trims low-mid muddiness, " +
+                          "brings speech and detail forward, adds a little air. Works on headphones and speakers.",
+            IsBuiltIn = true,
+            Engine = WithClarity(Make(bass: 0.0, treble: 0.5, preamp: 0.0,
+                /*31*/ 0.0, /*62*/ 0.0, /*125*/ 0.0, /*250*/ -1.0, /*500*/ -0.5,
+                /*1k*/ 0.0, /*2k*/ 0.5, /*4k*/ 1.0, /*8k*/ 0.5, /*16k*/ 0.5), amount: 0.6, lowCutHz: 0),
+        },
+        new Preset
+        {
+            Name = "Clear Sound (Laptop Speakers)",
+            Description = "A starting point for small laptop speakers: cuts the deep bass they cannot play " +
+                          "(it only adds distortion), keeps the punch around 125 Hz, trims low-mid mud and lifts " +
+                          "speech. Adjust Low-cut to your speakers.",
+            IsBuiltIn = true,
+            Engine = WithClarity(Make(bass: 1.0, treble: 1.0, preamp: -1.0,
+                /*31*/ 0.0, /*62*/ 0.0, /*125*/ 2.0, /*250*/ -1.0, /*500*/ -0.5,
+                /*1k*/ 0.5, /*2k*/ 1.0, /*4k*/ 1.0, /*8k*/ 1.0, /*16k*/ 0.5), amount: 0.6, lowCutHz: 80),
         },
         new Preset
         {

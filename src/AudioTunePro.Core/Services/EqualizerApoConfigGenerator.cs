@@ -52,28 +52,38 @@ public static class EqualizerApoConfigGenerator
         sb.AppendLine(FormattableString.Invariant($"Preamp: {totalPreamp:F2} dB"));
         sb.AppendLine();
 
-        // 10-band graphic EQ as a single interpolated GraphicEQ line — this is the
-        // low-CPU path in Equalizer APO (one spline filter instead of N peaking filters).
+        // The graphic EQ (10, 15 or 31 bands) as a single GraphicEQ line. Equalizer APO draws straight lines between
+        // the points (linear in dB over log-frequency, end values held) and turns the result into one fixed-length
+        // filter, so the cost does not grow with the number of bands. Decimal frequencies (31.5) are accepted as written.
         var points = engine.Bands
-            .Select(b => FormattableString.Invariant($"{b.FrequencyHz:0} {b.GainDb:F1}"))
+            .Select(b => FormattableString.Invariant($"{b.FrequencyHz:0.##} {b.GainDb:F1}"))
             .ToArray();
         sb.AppendLine("GraphicEQ: " + string.Join("; ", points));
         sb.AppendLine();
 
+        // Bass, Treble, Clarity and Low-cut as ordinary filters after the graphic EQ. The same plan is what
+        // FrequencyResponse draws, and only numbers formatted here reach the file, so nothing user-typed can add a config line.
         int filterIndex = 1;
-        if (Math.Abs(engine.BassDb) > 0.001)
+        foreach (var filter in EqFilterPlan.Create(engine))
         {
-            sb.AppendLine(FormattableString.Invariant(
-                $"Filter {filterIndex++}: ON LSC Fc 150 Hz Gain {engine.BassDb:F1} dB Q 0.9"));
-        }
-        if (Math.Abs(engine.TrebleDb) > 0.001)
-        {
-            sb.AppendLine(FormattableString.Invariant(
-                $"Filter {filterIndex++}: ON HSC Fc 6500 Hz Gain {engine.TrebleDb:F1} dB Q 0.9"));
+            if (filter.GroupHeader is not null)
+            {
+                sb.AppendLine();
+                sb.AppendLine(filter.GroupHeader);
+            }
+            sb.AppendLine(FormatFilter(filterIndex++, filter));
         }
 
         AppendSurround(sb, engine.Surround);
         return sb.ToString();
+    }
+
+    private static string FormatFilter(int index, FilterSpec filter)
+    {
+        var line = new StringBuilder(FormattableString.Invariant($"Filter {index}: ON {filter.Keyword} Fc {filter.FcHz:0} Hz"));
+        if (filter.GainDb is double gain) line.Append(FormattableString.Invariant($" Gain {gain:F1} dB"));
+        if (filter.Q is double q) line.Append(FormattableString.Invariant($" Q {q:0.0}"));
+        return line.ToString();
     }
 
     /// <summary>
