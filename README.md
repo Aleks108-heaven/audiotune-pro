@@ -1,7 +1,8 @@
 # AudioTune Pro — Windows 11 System-Wide Equalizer
 
-A system-wide equalizer for Windows 11: a 10-band graphic EQ, bass/treble
-shelving, 3D surround (speaker widening and headphone crossfeed/HRTF),
+A system-wide equalizer for Windows 11: a 10-, 15- or 31-band graphic EQ, bass/treble
+shelving, clarity controls (a low-mid cut / speech-presence / air curve and a low-cut filter),
+3D surround (speaker widening and headphone crossfeed/HRTF),
 clipping-protection limiter, a system volume slider, and presets tuned for the ASUS
 Vivobook's built-in speakers and headphone output.
 
@@ -49,8 +50,20 @@ Or open `AudioTunePro.slnx` in Visual Studio / Rider and run
 Running the tests:
 
 ```powershell
-dotnet test src/AudioTunePro.Core.Tests/AudioTunePro.Core.Tests.csproj
+dotnet test src/AudioTunePro.Core.Tests/AudioTunePro.Core.Tests.csproj     # EQ / limiter / config / response maths
+dotnet test src/AudioTunePro.App.UiTests/AudioTunePro.App.UiTests.csproj   # layout of the real window
 ```
+
+**UI layout tests** (`src/AudioTunePro.App.UiTests`): the real `MainWindow.xaml` is parsed from the app project and laid out
+offscreen with a stand-in view model, so nothing in them can reach Equalizer APO, the registry or the Windows audio
+service (the real `MainWindow` cannot be constructed in a test: its constructor starts those services). They check, at
+the default and the minimum window size and for 10, 15 and 31 bands: every binding exists on the real view models and
+renders without a binding error; readouts never overlap each other or the faders; the faders line up whatever the
+readouts say; the response curve runs through the centre of every fader cap, is drawn beneath them, takes no input and
+redraws when the view model changes; and the Limiter's peak badge is not pushed out of sight. They do not compare
+pixels, so fonts and display scaling matter only within half a pixel. Several tests also save a PNG under
+`bin/<configuration>/net10.0-windows/UiSnapshots/`; CI uploads those when a UI test fails. When you add a binding to
+`MainWindow.xaml`, add the property to `FakeMainViewModel` as well.
 
 ### Publishing a runnable build
 
@@ -155,11 +168,56 @@ in the app before uninstalling, or remove it under Settings → Apps → Startup
   then `./installer/sign.ps1 -Target Msi ...`. A code-signing certificate (from a public CA) is
   required; `*.pfx` files are git-ignored.
 
+### Publishing a release
+
+The release workflow only builds and uploads an artifact (it has read-only access to the repository, on purpose), so
+publishing is three steps:
+
+1. Raise `<Version>` in `Directory.Build.props` and `Version` in `installer/AudioTunePro.wxs` **together** (the MSI only
+   upgrades an existing install when its version is higher), and commit.
+2. Push a tag `vX.Y.Z` (or run "Release installer" by hand). The run builds the MSI, signs it when the `release-signing`
+   environment holds the certificate secrets, and uploads the `AudioTunePro-installer` artifact: `AudioTunePro-Setup.msi`
+   and `SHA256SUMS.txt`.
+3. Download that artifact, check the hashes, and publish it:
+
+   ```powershell
+   gh run download <run-id> -n AudioTunePro-installer -D release-download
+   Get-Content release-download/SHA256SUMS.txt; Get-FileHash release-download/AudioTunePro-Setup.msi -Algorithm SHA256
+   gh release create vX.Y.Z release-download/AudioTunePro-Setup.msi release-download/SHA256SUMS.txt --title "AudioTune Pro X.Y.Z" --notes-file notes.md
+   ```
+
+The first run of the workflow creates the `release-signing` environment if it does not exist, with no reviewers and
+no secrets: until you add them (Settings → Environments) the installer is unsigned, and the release notes should say so.
+
 ## Features
 
-- **10-band graphic EQ** (31 Hz – 16 kHz) rendered as a single Equalizer APO
-  `GraphicEQ` spline — cheap on CPU (one interpolated filter, not ten
-  separate peaking filters).
+- **Graphic EQ in three resolutions**, chosen with the **BANDS** switch above the faders and rendered as a single
+  Equalizer APO `GraphicEQ` line. Equalizer APO draws straight lines between the points (in dB over log-frequency,
+  holding the end values) and builds one fixed-size filter from the result, so more bands means a finer curve, not
+  more CPU:
+  - **10 bands**, one per octave (31 Hz – 16 kHz): the original layout.
+  - **15 bands**, two-thirds octave (25 Hz – 16 kHz): the default for new installs and for everyone upgrading.
+  - **31 bands**, one third octave (20 Hz – 20 kHz): the pro-audio standard. The readouts above and below the
+    faders stand on end so every band still shows its own dB value and frequency.
+
+  Switching resolution carries your curve over by straight-line interpolation over log-frequency (the way a
+  `GraphicEQ` line is drawn), so it sounds the same; presets and saved settings from the 10-band version load
+  unchanged. Going to *fewer* bands smooths fine detail the coarser layout cannot hold (a preset you have not
+  edited is always rebuilt from its own definition, so flipping back and forth never drifts).
+- **Total response curve**: a thin white line behind the faders draws the combined response of everything on the
+  EQ panel (the faders, Bass, Treble, Clarity and Low-cut) on the faders' own ±12 dB scale. With only the faders in
+  play it runs through the centre of every cap; where it leaves them, you are seeing what Bass, Treble, Clarity or
+  Low-cut add. It is computed from the same filter list the app writes to the config file, using Equalizer APO's own
+  rules (straight lines between graphic points with the end values held, and the standard peaking / shelf /
+  high-pass biquads), for 48 kHz audio. It leaves out Preamp, the limiter's trim and 3D surround, which change
+  level or stereo image rather than tone. A bypassed equalizer is a flat grey line. A unit test re-reads generated
+  config files with an independent implementation and requires the curve to match them.
+- **Clarity** (under the faders): **Amount** blends in a gentle cut in the low-mid mud (-2.5 dB at 300 Hz), a lift
+  in speech presence (+2.0 dB at 3.2 kHz) and a little air (+1.5 dB shelf above 10 kHz), all scaled by the slider.
+  **Low-cut** is a high-pass filter (30–150 Hz, leftmost = off): small laptop speakers cannot reproduce deep bass,
+  and feeding it to them only adds distortion that smears the mids. Leave it off for headphones. Both are fixed,
+  documented curves that sit after the faders, so the faders stay yours; the limiter counts the clarity boost,
+  Reset turns both off, and "Equalizer enabled" bypasses them with the rest of the EQ.
 - **Bass / Treble shelving controls** for quick tonal adjustment on top of
   the graphic curve.
 - **Presets**, including two tuned specifically for the ASUS Vivobook:
@@ -167,6 +225,8 @@ in the app before uninstalling, or remove it under Settings → Apps → Startup
     ~150 Hz typical of small laptop drivers, tames a harsh 2–4 kHz peak, and
     adds a touch of presence for clarity at low volume.
   - *ASUS Vivobook Headphones* — a gentler baseline for the headphone jack.
+  - *Clear Sound* (any output) and *Clear Sound (Laptop Speakers)* (adds an 80 Hz low-cut and trims sub-bass the
+    speakers cannot play) — starting points built on the Clarity controls, not measurements of your hardware.
   - Flat, Bass Boost, Vocal Boost, Movie, Gaming, Podcast/Voice Call,
     Classical, Rock, Pop, Electronic — plus save/delete your own.
 - **3D surround**, chosen automatically for your output device (or forced
@@ -211,7 +271,7 @@ in the app before uninstalling, or remove it under Settings → Apps → Startup
   The window (including its minimum size) is clamped to the screen's work area,
   so it is never opened taller or wider than the display.
 - **Keyboard-friendly faders**: each fader is a focusable slider with an
-  accessible name ("31 hertz band gain"); arrow keys nudge it, Home/End jump to
+  accessible name ("31 hertz band gain", "2.5 kilohertz band gain"); arrow keys nudge it, Home/End jump to
   the extremes, and **Delete** (or a double-click) resets it to 0 dB.
 - **One instance only**: launching a second copy just brings the running one
   to the front, so two copies never fight over the Equalizer APO config.
@@ -361,7 +421,7 @@ changed and what is still open. "Fixed" means changed in code and covered by a b
 | F-07 | Meter labelled "OUTPUT LEVEL" but reads before the EQ | **Fixed.** Now "SYSTEM MIX (PRE-EQ)", with an explanatory tooltip; design docs updated. |
 | F-08 | Installer: stale-MSI embedding, loose PDBs, autostart re-pointing, uninstall leftover | **Fixed except the leftover:** MSI now builds into `release/`, no PDBs, autostart is repaired only when stale. Uninstall still leaves the per-user "Start with Windows" entry (see Installer). |
 | F-09 | Design-system gaps | **Mostly fixed:** `track-guide` raised to #66718A (3.3:1 on raised surfaces); text-input and dropdown borders use it; scale labels use the same minus as the values; meter value is exposed to screen readers (not tested with a real screen reader); the "one teal" rule is reconciled in the design docs. **Accepted as designed:** `text-disabled` (2.2:1) and `accent-muted` (2.3:1) are only used for disabled controls, which WCAG exempts, and `border-panel` (1.2:1) is decoration on panels that need no border to be identified. |
-| F-10 | Tests and CI | **Partly fixed:** 54 new tests cover the new Core code. **Still open:** `MainViewModel` and the WPF project have no unit tests (they would need injected services), CI still runs only the Core tests, and xUnit v2 / the three test-support packages were not upgraded (a migration to xUnit v3 should be tested on its own). |
+| F-10 | Tests and CI | **Partly fixed:** 54 new tests cover the new Core code. **Still open:** `MainViewModel` and the WPF project have no unit tests (they would need injected services), CI still runs only the Core tests, and xUnit v2 / the three test-support packages were not upgraded (a migration to xUnit v3 should be tested on its own). *Update, 1.3.0: the window's layout now has its own tests (`AudioTunePro.App.UiTests`, run in CI); `MainViewModel` itself is still untested.* |
 
 Other open items from the first review, unchanged: a 3 kHz test tone supports the "pre-EQ" meter description, but
 one inconsistency with the browser's own session meter was never explained; not tested: DPI scales other than the
@@ -382,7 +442,10 @@ src/
                              level-meter math, built-in presets.
   AudioTunePro.Core.Tests/  xUnit tests: EQ/limiter/config math, config.txt include
                              handling, meter ballistics, signal states, persistence
-                             and security hardening.
+                             and security hardening, band layouts, Clarity, and the
+                             response curve checked against the generated config.
+  AudioTunePro.App.UiTests/ xUnit layout tests for the real MainWindow.xaml, rendered
+                             offscreen with a stand-in view model (see above).
   AudioTunePro.App/         WPF UI, Equalizer APO detection/install glue,
                              tray icon, WASAPI level meter, output-device detection
                              and volume, settings storage.
@@ -394,7 +457,7 @@ installer/
   License.rtf               Shown on the installer's license page.
   sign.ps1                  Authenticode-signs the app binaries and the MSI.
 .github/workflows/
-  ci.yml                    Build + tests + vulnerability audit (locked restore).
+  ci.yml                    Build + core tests + UI layout tests + vulnerability audit (locked restore).
   release.yml               Builds, optionally signs, and uploads the installer.
 Directory.Build.props       Turns on NuGet lock files and package auditing.
 */packages.lock.json        Exact pinned package versions (commit these).
@@ -412,6 +475,12 @@ User settings and custom presets are stored as JSON under
 - The limiter is a static gain-trim safeguard computed from the EQ curve,
   not a real-time lookahead/brickwall limiter — extremely loud, already
   near-0dBFS source material can still clip in rare cases.
+- The limiter's peak estimate covers every built-in preset on every layout, but it treats a Bass or Treble shelf as
+  only half-overlapping the bands. A boosted shelf is at full strength at the far end of its range, so a lone Bass or
+  Treble boost with flat faders is under-reserved by roughly half: Bass +12 reserves 6.0 dB of headroom while the
+  response peaks at about +12.4 dB (Bass +6: 3.0 dB against 6.2 dB). The same holds for a shelf plus a boosted outer
+  band. Found by comparing the estimate with the new response model; not changed, because making it exact would make
+  Bass- or Treble-boosted settings noticeably quieter. The Clarity filters are budgeted exactly.
 - Surround config lines (notably the `AUX0`/`AUX1` crossfeed channels and the
   4-channel HRTF order) follow Equalizer APO's documented syntax but were not
   verified against every APO version; Equalizer APO's Editor flags syntax errors.
